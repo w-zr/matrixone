@@ -135,7 +135,6 @@ func (node *memoryNode) GetValueByRow(readSchema *catalog.Schema, row, col int) 
 
 func (node *memoryNode) Foreach(
 	readSchema *catalog.Schema,
-	blkID uint16,
 	colIdx int,
 	op func(v any, isNull bool, row int) error,
 	sels []uint32,
@@ -146,7 +145,7 @@ func (node *memoryNode) Foreach(
 	}
 	idx, ok := node.writeSchema.SeqnumMap[readSchema.ColDefs[colIdx].SeqNum]
 	if !ok {
-		v := containers.NewConstNullVector(readSchema.ColDefs[colIdx].Type, int(node.data.Length()), mp)
+		v := containers.NewConstNullVector(readSchema.ColDefs[colIdx].Type, node.data.Length(), mp)
 		for _, row := range sels {
 			val := v.Get(int(row))
 			isNull := v.IsNull(int(row))
@@ -313,7 +312,7 @@ func (node *memoryNode) ApplyAppend(
 	bat *containers.Batch,
 	txn txnif.AsyncTxn) (from int, err error) {
 	schema := node.writeSchema
-	from = int(node.mustData().Length())
+	from = node.mustData().Length()
 	for srcPos, attr := range bat.Attrs {
 		def := schema.ColDefs[schema.GetColIdx(attr)]
 		destVec := node.data.Vecs[def.Idx]
@@ -528,7 +527,7 @@ func (node *memoryNode) resolveInMemoryColumnDatas(
 	colIdxes []int,
 	skipDeletes bool,
 	mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
+) (batch *containers.Batch, err error) {
 	node.object.RLock()
 	defer node.object.RUnlock()
 	maxRow, visible, deSels, err := node.object.appendMVCC.GetVisibleRowLocked(ctx, txn)
@@ -540,23 +539,23 @@ func (node *memoryNode) resolveInMemoryColumnDatas(
 	if err != nil {
 		return
 	}
-	view = containers.NewBlockView()
-	for i, colIdx := range colIdxes {
-		view.SetData(colIdx, data.Vecs[i])
+	batch = containers.NewBatchWithCapacity(len(colIdxes))
+	for i := range colIdxes {
+		batch.AddAnonymousVector(data.Vecs[i])
 	}
 	if skipDeletes {
 		return
 	}
 
-	err = node.object.fillInMemoryDeletesLocked(txn, 0, view.BaseView, node.object.RWMutex)
+	err = node.object.fillInMemoryDeletesLocked(txn, 0, batch, node.object.RWMutex)
 	if err != nil {
 		return
 	}
 	if !deSels.IsEmpty() {
-		if view.DeleteMask != nil {
-			view.DeleteMask.Or(deSels)
+		if batch.Deletes != nil {
+			batch.Deletes.Or(deSels)
 		} else {
-			view.DeleteMask = deSels
+			batch.Deletes = deSels
 		}
 	}
 	return
@@ -569,7 +568,7 @@ func (node *memoryNode) resolveInMemoryColumnData(
 	col int,
 	skipDeletes bool,
 	mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
+) (batch *containers.Batch, err error) {
 	node.object.RLock()
 	defer node.object.RUnlock()
 	maxRow, visible, deSels, err := node.object.appendMVCC.GetVisibleRowLocked(context.TODO(), txn)
@@ -577,7 +576,7 @@ func (node *memoryNode) resolveInMemoryColumnData(
 		return
 	}
 
-	view = containers.NewColumnView(col)
+	batch = containers.NewBatchWithCapacity(1)
 	var data containers.Vector
 	if data, err = node.GetColumnDataWindow(
 		readSchema,
@@ -588,20 +587,20 @@ func (node *memoryNode) resolveInMemoryColumnData(
 	); err != nil {
 		return
 	}
-	view.SetData(data)
+	batch.AddAnonymousVector(data)
 	if skipDeletes {
 		return
 	}
 
-	err = node.object.fillInMemoryDeletesLocked(txn, 0, view.BaseView, node.object.RWMutex)
+	err = node.object.fillInMemoryDeletesLocked(txn, 0, batch, node.object.RWMutex)
 	if err != nil {
 		return
 	}
 	if deSels != nil && !deSels.IsEmpty() {
-		if view.DeleteMask != nil {
-			view.DeleteMask.Or(deSels)
+		if batch.Deletes != nil {
+			batch.Deletes.Or(deSels)
 		} else {
-			view.DeleteMask = deSels
+			batch.Deletes = deSels
 		}
 	}
 
@@ -632,12 +631,12 @@ func (node *memoryNode) getInMemoryValue(
 		err = moerr.NewNotFoundNoCtx()
 		return
 	}
-	view, err := node.resolveInMemoryColumnData(txn, readSchema, col, true, mp)
+	batch, err := node.resolveInMemoryColumnData(txn, readSchema, col, true, mp)
 	if err != nil {
 		return
 	}
-	defer view.Close()
-	v, isNull = view.GetValue(row)
+	defer batch.Close()
+	v, isNull = batch.Vecs[0].Get(row), batch.Vecs[0].IsNull(row)
 	return
 }
 

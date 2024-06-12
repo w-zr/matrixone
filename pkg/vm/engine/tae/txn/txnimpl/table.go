@@ -413,7 +413,7 @@ func (tbl *txnTable) WaitSynced() {
 }
 
 func (tbl *txnTable) CollectCmd(cmdMgr *commandManager) (err error) {
-	tbl.csnStart = uint32(cmdMgr.GetCSN())
+	tbl.csnStart = cmdMgr.GetCSN()
 	for idx, txnEntry := range tbl.txnEntries.entries {
 		if tbl.txnEntries.IsDeleted(idx) {
 			continue
@@ -1331,8 +1331,8 @@ func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode
 			if err != nil {
 				return err
 			}
-			colV.ApplyDeletes()
-			pks = colV.Orphan()
+			colV.Compact()
+			pks = colV.Vecs[0]
 			defer pks.Close()
 		}
 		err = nil

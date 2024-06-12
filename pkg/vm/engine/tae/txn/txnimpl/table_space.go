@@ -91,7 +91,7 @@ func (space *tableSpace) isStatsExisted(o objectio.ObjectStats) bool {
 
 // register an appendable insertNode.
 func (space *tableSpace) registerANode() {
-	n := NewANode(
+	n := newANode(
 		space.table,
 		space.entry,
 	)
@@ -473,25 +473,23 @@ func (space *tableSpace) BatchDedup(key containers.Vector) error {
 }
 
 func (space *tableSpace) GetColumnDataByIds(
-	obj *catalog.ObjectEntry,
 	colIdxes []int,
 	mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
+) (*containers.Batch, error) {
 	n := space.nodes[0]
 	return n.GetColumnDataByIds(colIdxes, mp)
 }
 
 func (space *tableSpace) GetColumnDataById(
 	ctx context.Context,
-	obj *catalog.ObjectEntry,
 	colIdx int,
 	mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
+) (*containers.Batch, error) {
 	n := space.nodes[0]
 	return n.GetColumnDataById(ctx, colIdx, mp)
 }
 
-func (space *tableSpace) Prefetch(obj *catalog.ObjectEntry, idxes []uint16) error {
+func (space *tableSpace) Prefetch(idxes []uint16) error {
 	n := space.nodes[0]
 	return n.Prefetch(idxes)
 }

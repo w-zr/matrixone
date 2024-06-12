@@ -76,6 +76,11 @@ func NewBatchWithCapacity(cap int) *Batch {
 	}
 }
 
+func (bat *Batch) AddAnonymousVector(vec Vector) {
+	bat.Attrs = append(bat.Attrs, "")
+	bat.Vecs = append(bat.Vecs, vec)
+}
+
 func (bat *Batch) AddVector(attr string, vec Vector) {
 	if _, exist := bat.Nameidx[attr]; exist {
 		panic(moerr.NewInternalErrorNoCtx("duplicate vector %s", attr))

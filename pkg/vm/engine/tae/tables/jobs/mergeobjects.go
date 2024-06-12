@@ -182,10 +182,10 @@ func (task *mergeObjectsTask) LoadNextBatch(ctx context.Context, objIdx uint32) 
 		return nil, nil, nil, mergesort.ErrNoMoreBlocks
 	}
 	var err error
-	var view *containers.BlockView
+	var bat *containers.Batch
 	releaseF := func() {
-		if view != nil {
-			view.Close()
+		if bat != nil {
+			bat.Close()
 		}
 	}
 	defer func() {
@@ -195,21 +195,17 @@ func (task *mergeObjectsTask) LoadNextBatch(ctx context.Context, objIdx uint32) 
 	}()
 
 	obj := task.mergedObjsHandle[objIdx]
-	view, err = obj.GetColumnDataByIds(ctx, uint16(task.nMergedBlk[objIdx]), task.idxs, common.MergeAllocator)
+	bat, err = obj.GetColumnDataByIds(ctx, uint16(task.nMergedBlk[objIdx]), task.idxs, common.MergeAllocator)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if len(task.attrs) != len(view.Columns) {
-		panic(fmt.Sprintf("mismatch %v, %v, %v", task.attrs, len(task.attrs), len(view.Columns)))
+	if len(task.attrs) != len(bat.Vecs) {
+		panic(fmt.Sprintf("mismatch %v, %v, %v", task.attrs, len(task.attrs), len(bat.Vecs)))
 	}
+	bat.Attrs = task.attrs
 	task.nMergedBlk[objIdx]++
 
-	bat := batch.New(true, task.attrs)
-	for i, col := range view.Columns {
-		bat.Vecs[i] = col.GetData().GetDownstreamVector()
-	}
-	bat.SetRowCount(view.Columns[0].Length())
-	return bat, view.DeleteMask, releaseF, nil
+	return containers.ToCNBatch(bat), bat.Deletes, releaseF, nil
 }
 
 func (task *mergeObjectsTask) GetCommitEntry() *api.MergeCommitEntry {

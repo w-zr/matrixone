@@ -37,7 +37,6 @@ func LoadPersistedColumnData(
 	id *common.ID,
 	def *catalog.ColDef,
 	location objectio.Location,
-	mp *mpool.MPool,
 ) (vec containers.Vector, err error) {
 	if def.IsPhyAddr() {
 		return model.PreparePhyAddrData(&id.BlockID, 0, location.Rows(), rt.VectorPool.Transient)
@@ -45,7 +44,7 @@ func LoadPersistedColumnData(
 	//Extend lifetime of vectors is without the function.
 	//need to copy. closeFunc will be nil.
 	vectors, _, err := blockio.LoadColumns2(
-		ctx, []uint16{uint16(def.SeqNum)},
+		ctx, []uint16{def.SeqNum},
 		[]types.Type{def.Type},
 		rt.Fs.Service,
 		location,
@@ -65,7 +64,6 @@ func LoadPersistedColumnDatas(
 	id *common.ID,
 	colIdxs []int,
 	location objectio.Location,
-	mp *mpool.MPool,
 ) ([]containers.Vector, error) {
 	cols := make([]uint16, 0)
 	typs := make([]types.Type, 0)
@@ -117,7 +115,6 @@ func ReadPersistedBlockRow(location objectio.Location) int {
 
 func LoadPersistedDeletes(
 	ctx context.Context,
-	pkName string,
 	fs *objectio.ObjectFS,
 	location objectio.Location,
 	mp *mpool.MPool,
@@ -125,13 +122,12 @@ func LoadPersistedDeletes(
 	if isPersistedByCN, err = blockio.IsPersistedByCN(ctx, location, fs.Service); err != nil {
 		return
 	}
-	bat, release, err = LoadPersistedDeletesBySchema(ctx, pkName, fs, location, isPersistedByCN, mp)
+	bat, release, err = LoadPersistedDeletesBySchema(ctx, fs, location, isPersistedByCN, mp)
 	return
 }
 
 func LoadPersistedDeletesBySchema(
 	ctx context.Context,
-	pkName string,
 	fs *objectio.ObjectFS,
 	location objectio.Location,
 	isPersistedByCN bool,
@@ -175,10 +171,8 @@ func LoadPersistedDeletesBySchema(
 // }
 
 func MakeImmuIndex(
-	ctx context.Context,
 	meta *catalog.ObjectEntry,
 	bf objectio.BloomFilter,
-	rt *dbutils.Runtime,
 ) (idx indexwrapper.ImmutIndex, err error) {
 	stats, err := meta.MustGetObjectStats()
 	if err != nil {

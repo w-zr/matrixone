@@ -141,14 +141,7 @@ func (obj *aobject) Pin() *common.PinnedItem[*aobject] {
 	}
 }
 
-func (obj *aobject) GetColumnDataByIds(
-	ctx context.Context,
-	txn txnif.AsyncTxn,
-	readSchema any,
-	_ uint16,
-	colIdxes []int,
-	mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
+func (obj *aobject) GetColumnDataByIds(ctx context.Context, txn txnif.AsyncTxn, readSchema any, blkID uint16, colIdxes []int, mp *mpool.MPool) (view *containers.Batch, err error) {
 	return obj.resolveColumnDatas(
 		ctx,
 		txn,
@@ -159,19 +152,12 @@ func (obj *aobject) GetColumnDataByIds(
 	)
 }
 
-func (obj *aobject) GetColumnDataById(
-	ctx context.Context,
-	txn txnif.AsyncTxn,
-	readSchema any,
-	_ uint16,
-	col int,
-	mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
+func (obj *aobject) GetColumnDataById(ctx context.Context, txn txnif.AsyncTxn, readSchema any, _ uint16, colIdx int, mp *mpool.MPool) (*containers.Batch, error) {
 	return obj.resolveColumnData(
 		ctx,
 		txn,
 		readSchema.(*catalog.Schema),
-		col,
+		colIdx,
 		false,
 		mp,
 	)
@@ -184,7 +170,7 @@ func (obj *aobject) resolveColumnDatas(
 	colIdxes []int,
 	skipDeletes bool,
 	mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
+) (batch *containers.Batch, err error) {
 	node := obj.PinNode()
 	defer node.Unref()
 
@@ -237,7 +223,7 @@ func (obj *aobject) resolveColumnData(
 	col int,
 	skipDeletes bool,
 	mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
+) (*containers.Batch, error) {
 	node := obj.PinNode()
 	defer node.Unref()
 

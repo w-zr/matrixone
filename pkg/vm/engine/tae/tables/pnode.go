@@ -69,7 +69,7 @@ func (node *persistedNode) BatchDedup(
 }
 
 func (node *persistedNode) ContainsKey(ctx context.Context, key any, blkID uint32) (ok bool, err error) {
-	pkIndex, err := MakeImmuIndex(ctx, node.object.meta, nil, node.object.rt)
+	pkIndex, err := MakeImmuIndex(node.object.meta, nil)
 	if err != nil {
 		return
 	}
@@ -192,8 +192,8 @@ func (node *persistedNode) GetRowByFilter(
 		defer commitTSVec.Close()
 
 		// Load persisted deletes
-		view := containers.NewColumnView(0)
-		if err = node.object.FillPersistedDeletes(ctx, blkID, txn, view.BaseView, mp); err != nil {
+		batch := containers.NewBatch()
+		if err = node.object.FillPersistedDeletes(ctx, blkID, txn, batch, mp); err != nil {
 			return
 		}
 
@@ -205,7 +205,7 @@ func (node *persistedNode) GetRowByFilter(
 			if commitTS.Greater(&startTS) {
 				break
 			}
-			deleted = view.IsDeleted(int(offset))
+			deleted = batch.IsDeleted(int(offset))
 			if !deleted {
 				exist = true
 				row = offset
