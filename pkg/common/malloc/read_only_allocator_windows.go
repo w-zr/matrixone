@@ -12,15 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-
 package malloc
 
 import (
 	"sync"
 	"unsafe"
 
-	"golang.org/x/sys/unix"
+	"golang.org/x/sys/windows"
 )
 
 type ReadOnlyAllocator struct {
@@ -47,7 +45,8 @@ func (r *readOnlyDeallocatorArgs) Freeze() {
 		(*byte)(r.info.Addr),
 		r.info.Length,
 	)
-	unix.Mprotect(slice, unix.PROT_READ)
+	oldProtect := uint32(0)
+	windows.VirtualProtect(uintptr(unsafe.Pointer(unsafe.SliceData(slice))), uintptr(len(slice)), windows.PAGE_READONLY, &oldProtect)
 }
 
 type Freezer struct {
@@ -74,7 +73,8 @@ func NewReadOnlyAllocator(
 						(*byte)(args.info.Addr),
 						args.info.Length,
 					)
-					unix.Mprotect(slice, unix.PROT_READ|unix.PROT_WRITE)
+					oldProtect := uint32(0)
+					windows.VirtualProtect(uintptr(unsafe.Pointer(unsafe.SliceData(slice))), uintptr(len(slice)), windows.PAGE_READWRITE, &oldProtect)
 				}
 			},
 		),

@@ -17,7 +17,7 @@ package malloc
 import (
 	"unsafe"
 
-	"golang.org/x/sys/unix"
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -80,8 +80,11 @@ func NewFixedSizeMmapAllocator(
 			func(hints Hints, args *fixedSizeMmapDeallocatorArgs) {
 
 				if hints&DoNotReuse > 0 {
-					if err := unix.Munmap(
-						unsafe.Slice((*byte)(args.ptr), size),
+					windows.VirtualFree(uintptr(args.ptr), uintptr(size), windows.MEM_RELEASE)
+					if err := windows.VirtualFree(
+						uintptr(args.ptr),
+						uintptr(size),
+						windows.MEM_RELEASE,
 					); err != nil {
 						panic(err)
 					}
@@ -104,8 +107,10 @@ func NewFixedSizeMmapAllocator(
 
 					default:
 						// unmap
-						if err := unix.Munmap(
-							unsafe.Slice((*byte)(args.ptr), size),
+						if err := windows.VirtualFree(
+							uintptr(args.ptr),
+							uintptr(size),
+							windows.MEM_RELEASE,
 						); err != nil {
 							panic(err)
 						}
@@ -145,16 +150,16 @@ func (f *fixedSizeMmapAllocator) Allocate(hints Hints) (slice []byte, dec Deallo
 
 		default:
 			// allocate new
-			slice, err = unix.Mmap(
-				-1, 0,
-				int(f.size),
-				unix.PROT_READ|unix.PROT_WRITE,
-				unix.MAP_PRIVATE|unix.MAP_ANONYMOUS,
-			)
+			windows.VirtualAlloc(0, uintptr(f.size), windows.MEM_COMMIT|windows.MEM_RESERVE, windows.PAGE_READWRITE)
+			addr, err := windows.VirtualAlloc(
+				0,
+				uintptr(f.size),
+				windows.MEM_COMMIT|windows.MEM_RESERVE,
+				windows.PAGE_READWRITE)
 			if err != nil {
 				return nil, nil, err
 			}
-
+			slice = unsafe.Slice((*byte)(unsafe.Pointer(addr)), f.size)
 		}
 
 	}

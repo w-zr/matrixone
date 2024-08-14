@@ -46,7 +46,7 @@ func NewCAllocator() *CAllocator {
 var _ Allocator = new(CAllocator)
 
 func (c *CAllocator) Allocate(size uint64, hints Hints) ([]byte, Deallocator, error) {
-	ptr := C.malloc(C.ulong(size))
+	ptr := C.malloc(C.ulonglong(size))
 	if hints&NoClear == 0 {
 		clear(unsafe.Slice((*byte)(ptr), size))
 	}

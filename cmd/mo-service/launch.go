@@ -49,7 +49,8 @@ func startCluster(
 	}
 
 	if cfg.Dynamic.Enable {
-		return startDynamicCluster(ctx, cfg, stopper, shutdownC)
+		// return startDynamicCluster(ctx, cfg, stopper, shutdownC)
+		panic("Dynamic not supported")
 	}
 
 	/*

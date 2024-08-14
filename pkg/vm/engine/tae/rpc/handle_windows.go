@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-
 package rpc
 
 import (
@@ -24,7 +22,6 @@ import (
 	"regexp"
 	"runtime"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
@@ -82,13 +79,10 @@ type txnContext struct {
 
 func openTAE(ctx context.Context, targetDir string, opt *options.Options) (tae *db.DB, err error) {
 	if targetDir != "" {
-		mask := syscall.Umask(0)
 		if err := os.MkdirAll(targetDir, os.FileMode(0755)); err != nil {
-			syscall.Umask(mask)
 			logutil.Infof("Recreate dir error:%v", err)
 			return nil, err
 		}
-		syscall.Umask(mask)
 		tae, err = db.Open(ctx, targetDir+"/tae", opt)
 		if err != nil {
 			logutil.Warnf("Open tae failed. error:%v", err)

@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-
 package buffer
 
 import (
 	"unsafe"
 
-	"golang.org/x/sys/unix"
+	"golang.org/x/sys/windows"
 )
 
 func New() *Buffer {
@@ -30,7 +28,7 @@ func (b *Buffer) Free() {
 	b.Lock()
 	defer b.Unlock()
 	for i := range b.chunks {
-		unix.Munmap(b.chunks[i].data)
+		windows.VirtualFree(uintptr(unsafe.Pointer(unsafe.SliceData(b.chunks[i].data))), uintptr(len(b.chunks[i].data)), windows.MEM_DECOMMIT)
 	}
 	b.chunks = nil
 }
@@ -78,12 +76,12 @@ func (b *Buffer) push(c *chunk) {
 }
 
 func (b *Buffer) newChunk() *chunk {
-	data, err := unix.Mmap(-1, 0, DefaultChunkBufferSize, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE)
+	addr, err := windows.VirtualAlloc(0, DefaultChunkBufferSize, windows.MEM_COMMIT|windows.MEM_RESERVE, windows.PAGE_READWRITE)
 	if err != nil {
 		panic(err)
 	}
-	c := (*chunk)(unsafe.Pointer(unsafe.SliceData(data)))
-	c.data = data
+	c := (*chunk)(unsafe.Pointer(addr))
+	c.data = unsafe.Slice((*byte)(unsafe.Pointer(addr)), DefaultChunkBufferSize)
 	c.off = uint32(ChunkSize)
 	return c
 }

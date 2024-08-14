@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-
 package main
 
+/*
 import (
 	"context"
 	"fmt"
@@ -40,7 +39,7 @@ var (
 )
 
 var (
-	dynamicCNServicePIDs     []int
+	dynamicCNServicePIDs     []syscall.Handle
 	dynamicCNServiceCommands [][]string
 )
 
@@ -86,7 +85,7 @@ func startDynamicCNServices(
 	}
 
 	dynamicCNServiceCommands = make([][]string, cfg.ServiceCount)
-	dynamicCNServicePIDs = make([]int, cfg.ServiceCount)
+	dynamicCNServicePIDs = make([]syscall.Handle, cfg.ServiceCount)
 	for i := 0; i < cfg.ServiceCount; i++ {
 		dynamicCNServiceCommands[i] = []string{
 			os.Args[0],
@@ -211,7 +210,7 @@ func startDynamicCtlHTTPServer(addr string) error {
 					return
 				}
 
-				if err := syscall.Kill(dynamicCNServicePIDs[index], syscall.SIGKILL); err != nil {
+				if err := syscall.TerminateProcess(dynamicCNServicePIDs[index], uint32(syscall.SIGKILL)); err != nil {
 					resp.Write([]byte(err.Error()))
 				} else {
 					resp.Write([]byte("OK"))
@@ -230,7 +229,7 @@ func startDynamicCtlHTTPServer(addr string) error {
 }
 
 func stopDynamicCNByIndex(index int) error {
-	return syscall.Kill(dynamicCNServicePIDs[index], syscall.SIGKILL)
+	return syscall.TerminateProcess(dynamicCNServicePIDs[index], uint32(syscall.SIGKILL))
 }
 
 func startDynamicCNByIndex(index int) error {
@@ -258,6 +257,7 @@ func startDynamicCNByIndex(index int) error {
 
 func stopAllDynamicCNServices() {
 	for _, pid := range dynamicCNServicePIDs {
-		syscall.Kill(pid, syscall.SIGKILL)
+		syscall.TerminateProcess(pid, uint32(syscall.SIGKILL))
 	}
 }
+*/

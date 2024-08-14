@@ -12,17 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-
 package db
 
 import (
 	"io"
 	"os"
-	"syscall"
 
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -42,14 +40,8 @@ func createDBLock(dir string) (io.Closer, error) {
 	if err != nil {
 		return nil, err
 	}
-	flockT := syscall.Flock_t{
-		Type:   syscall.F_WRLCK,
-		Whence: io.SeekStart,
-		Start:  0,
-		Len:    0,
-		Pid:    int32(os.Getpid()),
-	}
-	if err := syscall.FcntlFlock(f.Fd(), syscall.F_SETLK, &flockT); err != nil {
+
+	if err := windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK, 0, 0, 0, &windows.Overlapped{}); err != nil {
 		logutil.Errorf("error locking file: %s", err)
 		f.Close()
 		return nil, err

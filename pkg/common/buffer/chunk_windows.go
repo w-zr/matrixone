@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-
 package buffer
 
 import (
 	"unsafe"
 
-	"golang.org/x/sys/unix"
+	"golang.org/x/sys/windows"
 )
 
 func init() {
@@ -46,7 +44,7 @@ func (c *chunk) free() {
 	c.Lock()
 	if c.numFree = c.numFree + 1; c.numFree == c.numAlloc &&
 		c.flag&FULL == FULL { // this chunk is no longer needed
-		unix.Munmap(c.data)
+		windows.VirtualFree(uintptr(unsafe.Pointer(unsafe.SliceData(c.data))), uintptr(len(c.data)), windows.MEM_RELEASE)
 		return
 	}
 	c.Unlock()

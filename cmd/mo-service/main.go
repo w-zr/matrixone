@@ -81,7 +81,7 @@ func main() {
 
 	flag.Parse()
 	maybePrintVersion()
-	maybeRunInDaemonMode()
+	//maybeRunInDaemonMode()
 
 	uuid.EnableRandPool()
 
@@ -148,7 +148,7 @@ func waitSignalToStop(stopper *stopper.Stopper, shutdownC chan struct{}) {
 		detail += "ha keeper issues shutdown command"
 	}
 
-	stopAllDynamicCNServices()
+	//stopAllDynamicCNServices()
 
 	logutil.GetGlobalLogger().Info(detail)
 	stopper.Stop()
@@ -469,6 +469,7 @@ func initTraceMetric(ctx context.Context, st metadata.ServiceType, cfg *Config, 
 	return nil
 }
 
+/*
 func maybeRunInDaemonMode() {
 	if _, isChild := os.LookupEnv("daemon"); *daemon && !isChild {
 		childENV := []string{"daemon=true"}
@@ -491,3 +492,4 @@ func maybeRunInDaemonMode() {
 		os.Exit(0)
 	}
 }
+*/
