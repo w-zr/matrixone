@@ -191,6 +191,16 @@ func createMetadataFile(dir string,
 	if err := ws(f.Sync()); err != nil {
 		return err
 	}
+	err = f.Close()
+	if err != nil {
+		return err
+	}
+	defer func(fs vfs.FS, name string) {
+		_, err = fs.Open(name)
+		if err != nil {
+			panic(err)
+		}
+	}(fs, fp)
 	return fs.Rename(tmp, fp)
 }
 
