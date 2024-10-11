@@ -152,12 +152,9 @@ func (s *Scope) DropDatabase(c *Compile) error {
 	}
 
 	// 3. delete fks
-	err = c.runSql(s.Plan.GetDdl().GetDropDatabase().GetUpdateFkSql())
-	if err != nil {
-		return err
-	}
+	return c.runSql(s.Plan.GetDdl().GetDropDatabase().GetUpdateFkSql())
 	// 4. delete retention info
-	return c.runSql(fmt.Sprintf(deleteMoRetentionWithDatabaseNameFormat, dbName))
+	// return c.runSql(fmt.Sprintf(deleteMoRetentionWithDatabaseNameFormat, dbName))
 }
 
 func (s *Scope) removeFkeysRelationships(c *Compile, dbName string) error {
@@ -2352,14 +2349,17 @@ func (s *Scope) DropTable(c *Compile) error {
 		}
 	}
 
-	// remove entry in mo_retention if exists
-	// skip tables in mo_catalog.
-	// These tables do not have retention info.
-	if dbName == catalog.MO_CATALOG {
+	/*
+		// remove entry in mo_retention if exists
+		// skip tables in mo_catalog.
+		// These tables do not have retention info.
+		if isView || dbName == catalog.MO_CATALOG {
 		return nil
-	}
-	deleteRetentionSQL := fmt.Sprintf(deleteMoRetentionWithDatabaseNameAndTableNameFormat, dbName, tblName)
-	return c.runSql(deleteRetentionSQL)
+		}
+		deleteRetentionSQL := fmt.Sprintf(deleteMoRetentionWithDatabaseNameAndTableNameFormat, dbName, tblName)
+		return c.runSql(deleteRetentionSQL)
+	*/
+	return nil
 }
 
 func planDefsToExeDefs(tableDef *plan.TableDef) ([]engine.TableDef, error) {

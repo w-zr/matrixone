@@ -1,4 +1,5 @@
 drop account if exists acc01;
+-- @bvt:issue#disable-retention
 create account acc01 admin_name = 'test_account' identified by '111';
 
 drop database if exists test;
@@ -445,3 +446,4 @@ select mo_ctl('cn', 'task', ':retention');
 -- @ignore:2
 select * from mo_catalog.mo_retention;
 drop database test02;
+-- @bvt:issue
