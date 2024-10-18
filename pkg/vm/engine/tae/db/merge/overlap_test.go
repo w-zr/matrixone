@@ -201,10 +201,12 @@ func BenchmarkMergeOverlap(b *testing.B) {
 		}
 
 		fmt.Printf("Ave(hit)=%f\n", float64(totalHit)/10000)
+		fmt.Printf("Ave(hit/n)=%f\n", float64(totalHit)/10000/float64(len(entries)))
 		fmt.Printf("Ave(mergedSize)=%f\n", float64(totalMergedSize)/float64(i)/float64(common.Const1MBytes))
 		record := []string{
 			strconv.Itoa(i),
 			strconv.FormatFloat(float64(totalHit)/10000, 'f', -1, 64),
+			strconv.FormatFloat(float64(totalHit)/10000/float64(len(entries)), 'f', -1, 64),
 			strconv.FormatFloat(float64(totalMergedSize)/float64(i)/float64(common.Const1MBytes), 'f', -1, 64),
 		}
 		err = csvWriter.Write(record)
