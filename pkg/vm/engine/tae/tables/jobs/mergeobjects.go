@@ -75,7 +75,7 @@ type mergeObjectsTask struct {
 }
 
 func NewMergeObjectsTask(
-	ctx *tasks.Context,
+	ctx *tasks.Config,
 	txn txnif.AsyncTxn,
 	mergedObjs []*catalog.ObjectEntry,
 	rt *dbutils.Runtime,

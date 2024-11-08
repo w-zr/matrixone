@@ -16,13 +16,13 @@ package tasks
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
-
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
-	iops "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks/ops/base"
-	ops "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks/worker"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/wal"
 )
 
 var (
@@ -34,16 +34,13 @@ type Scheduler interface {
 	Start()
 	Stop()
 	Schedule(Task) error
-}
 
-type TaskScheduler interface {
-	Scheduler
-	ScheduleTxnTask(ctx *Context, taskType TaskType, factory TxnTaskFactory) (Task, error)
-	ScheduleMultiScopedTxnTask(ctx *Context, taskType TaskType, scopes []common.ID, factory TxnTaskFactory) (Task, error)
-	ScheduleMultiScopedTxnTaskWithObserver(ctx *Context, taskType TaskType, scopes []common.ID, factory TxnTaskFactory, observers ...iops.Observer) (Task, error)
-	ScheduleMultiScopedFn(ctx *Context, taskType TaskType, scopes []common.ID, fn FuncT) (Task, error)
-	ScheduleFn(ctx *Context, taskType TaskType, fn func() error) (Task, error)
-	ScheduleScopedFn(ctx *Context, taskType TaskType, scope *common.ID, fn func() error) (Task, error)
+	ScheduleTxnTask(ctx *Config, taskType TaskType, factory TxnTaskFactory) (Task, error)
+	ScheduleMultiScopedTxnTask(ctx *Config, taskType TaskType, scopes []common.ID, factory TxnTaskFactory) (Task, error)
+	ScheduleMultiScopedTxnTaskWithObserver(ctx *Config, taskType TaskType, scopes []common.ID, factory TxnTaskFactory, observers ...Observer) (Task, error)
+	ScheduleMultiScopedFn(ctx *Config, taskType TaskType, scopes []common.ID, fn FuncT) (Task, error)
+	ScheduleFn(ctx *Config, taskType TaskType, fn func() error) (Task, error)
+	ScheduleScopedFn(ctx *Config, taskType TaskType, scope *common.ID, fn func() error) (Task, error)
 
 	CheckAsyncScopes(scopes []common.ID) error
 
@@ -51,47 +48,146 @@ type TaskScheduler interface {
 	GetPenddingLSNCnt() uint64
 }
 
-type BaseScheduler struct {
-	ops.OpWorker
-	idAlloc     *common.IdAllocator
-	Dispatchers map[TaskType]Dispatcher
+type taskScheduler struct {
+	typedHandler *TypedTaskHandler
+	ctx          context.Context
+	txnMgr       *txnbase.TxnManager
+	wal          wal.Driver
 }
 
-func NewBaseScheduler(ctx context.Context, name string) *BaseScheduler {
-	scheduler := &BaseScheduler{
-		OpWorker:    *ops.NewOpWorker(ctx, name),
-		idAlloc:     common.NewIdAllocator(1),
-		Dispatchers: make(map[TaskType]Dispatcher),
+func (s *taskScheduler) Start() {
+	s.typedHandler.Start()
+}
+
+func NewTaskScheduler(
+	ctx context.Context,
+	txnMgr *txnbase.TxnManager,
+	wal wal.Driver,
+	asyncWorkers int,
+	ioWorkers int,
+) *taskScheduler {
+	if asyncWorkers < 0 {
+		panic(fmt.Sprintf("bad param: %d txn workers", asyncWorkers))
 	}
-	scheduler.ExecFunc = scheduler.doDispatch
-	return scheduler
-}
-
-func (s *BaseScheduler) RegisterDispatcher(t TaskType, dispatcher Dispatcher) {
-	s.Dispatchers[t] = dispatcher
-}
-
-func (s *BaseScheduler) Schedule(task Task) error {
-	// task.AttachID(s.idAlloc())
-	if !s.SendOp(task) {
-		return ErrSchedule
+	if ioWorkers < 0 {
+		panic(fmt.Sprintf("bad param: %d io workers", ioWorkers))
 	}
+	s := &taskScheduler{
+		ctx:          ctx,
+		typedHandler: NewTypedTaskHandler(),
+		txnMgr:       txnMgr,
+		wal:          wal,
+	}
+	jobHandler := NewScopeCheckTaskHandlerDispatcher()
+	mergeHandler := NewPoolHandler(ctx, asyncWorkers)
+	jobHandler.AddHandle(DataCompactionTask, mergeHandler)
+	gcHandler := NewBaseTaskHandler(ctx, "gc")
+	jobHandler.AddHandle(GCTask, gcHandler)
+	flushHandler := NewPoolHandler(ctx, asyncWorkers)
+	jobHandler.AddHandle(FlushTableTailTask, flushHandler)
+
+	ckpHandler := NewShardedTaskHandler(DefaultScopeSharder)
+	for i := 0; i < 4; i++ {
+		handler := NewBaseTaskHandler(ctx, fmt.Sprintf("[ckpworker-%d]", i))
+		ckpHandler.AddHandle(handler)
+	}
+
+	ioHandler := NewShardedTaskHandler(nil)
+	for i := 0; i < ioWorkers; i++ {
+		handler := NewBaseTaskHandler(ctx, fmt.Sprintf("[ioworker-%d]", i))
+		ioHandler.AddHandle(handler)
+	}
+
+	s.typedHandler.AddHandle(GCTask, jobHandler)
+	s.typedHandler.AddHandle(DataCompactionTask, jobHandler)
+	s.typedHandler.AddHandle(IOTask, ioHandler)
+	s.typedHandler.AddHandle(CheckpointTask, ckpHandler)
+	s.Start()
+	return s
+}
+
+func (s *taskScheduler) Stop() {
+	s.typedHandler.Close()
+	logutil.Info("TaskScheduler Stopped")
+}
+
+func (s *taskScheduler) ScheduleTxnTask(
+	cfg *Config,
+	taskType TaskType,
+	factory TxnTaskFactory) (task Task, err error) {
+	task = NewScheduledTxnTask(s.ctx, s.txnMgr, taskType, cfg, nil, factory)
+	err = s.Schedule(task)
+	return
+}
+
+func (s *taskScheduler) ScheduleMultiScopedTxnTask(
+	cfg *Config,
+	taskType TaskType,
+	scopes []common.ID,
+	factory TxnTaskFactory) (task Task, err error) {
+	task = NewScheduledTxnTask(s.ctx, s.txnMgr, taskType, cfg, scopes, factory)
+	err = s.Schedule(task)
+	return
+}
+
+func (s *taskScheduler) ScheduleMultiScopedTxnTaskWithObserver(
+	cfg *Config,
+	taskType TaskType,
+	scopes []common.ID,
+	factory TxnTaskFactory,
+	observers ...Observer) (task Task, err error) {
+	task = NewScheduledTxnTask(s.ctx, s.txnMgr, taskType, cfg, scopes, factory)
+	for _, observer := range observers {
+		task.AddObserver(observer)
+	}
+	err = s.Schedule(task)
+	return
+}
+
+func (s *taskScheduler) CheckAsyncScopes(scopes []common.ID) (err error) {
+	dispatcher := s.typedHandler.handlers[DataCompactionTask].(*ScopeCheckTaskHandler)
+	dispatcher.Lock()
+	defer dispatcher.Unlock()
+	return dispatcher.checkConflictLocked(scopes)
+}
+
+func (s *taskScheduler) ScheduleMultiScopedFn(
+	ctx *Config,
+	taskType TaskType,
+	scopes []common.ID,
+	fn FuncT) (task Task, err error) {
+	task = NewMultiScopedFnTask(ctx, taskType, scopes, fn)
+	err = s.Schedule(task)
+	return
+}
+
+func (s *taskScheduler) GetPenddingLSNCnt() uint64 {
+	return s.wal.GetPenddingCnt()
+}
+
+func (s *taskScheduler) GetCheckpointedLSN() uint64 {
+	return s.wal.GetCheckpointed()
+}
+
+func (s *taskScheduler) ScheduleFn(ctx *Config, taskType TaskType, fn func() error) (task Task, err error) {
+	task = NewFnTask(ctx, taskType, fn)
+	err = s.Schedule(task)
+	return
+}
+
+func (s *taskScheduler) ScheduleScopedFn(ctx *Config, taskType TaskType, scope *common.ID, fn func() error) (task Task, err error) {
+	task = NewScopedFnTask(ctx, taskType, scope, fn)
+	err = s.Schedule(task)
+	return
+}
+
+func (s *taskScheduler) Schedule(task Task) (err error) {
+	taskType := task.Type()
+	// if taskType == DataCompactionTask || taskType == GCTask {
+	if taskType == DataCompactionTask || taskType == FlushTableTailTask {
+		dispatcher := s.typedHandler.handlers[DataCompactionTask].(*ScopeCheckTaskHandler)
+		return dispatcher.TryDispatch(task)
+	}
+	s.typedHandler.Enqueue(task)
 	return nil
-}
-
-func (s *BaseScheduler) doDispatch(op iops.IOp) {
-	task := op.(Task)
-	dispatcher := s.Dispatchers[task.Type()]
-	if dispatcher == nil {
-		logutil.Errorf("No dispatcher found for %d[T] Task", task.Type())
-		panic(ErrDispatcherNotFound)
-	}
-	dispatcher.Dispatch(task)
-}
-
-func (s *BaseScheduler) Stop() {
-	s.OpWorker.Stop()
-	for _, d := range s.Dispatchers {
-		d.Close()
-	}
 }

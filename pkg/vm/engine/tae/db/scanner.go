@@ -20,13 +20,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks/worker/base"
 )
-
-type DBScanner interface {
-	base.IHBHandle
-	RegisterOp(ScannerOp)
-}
 
 type ErrHandler interface {
 	OnObjectErr(entry *catalog.ObjectEntry, err error) error
@@ -82,7 +76,7 @@ func (scanner *dbScanner) OnExec() {
 	}
 }
 
-func NewDBScanner(db *DB, errHandler ErrHandler) *dbScanner {
+func newDBScanner(db *DB, errHandler ErrHandler) *dbScanner {
 	if errHandler == nil {
 		errHandler = new(NoopErrHandler)
 	}

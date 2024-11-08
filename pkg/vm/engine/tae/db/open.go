@@ -42,7 +42,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/model"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/options"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
-	w "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks/worker"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnimpl"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/wal"
@@ -133,7 +133,7 @@ func Open(ctx context.Context, dirname string, opts *options.Options) (db *DB, e
 	case options.LogstoreLogservice:
 		db.Wal = wal.NewDriverWithLogservice(opts.Ctx, opts.Lc)
 	}
-	scheduler := newTaskScheduler(db, db.Opts.SchedulerCfg.AsyncWorkers, db.Opts.SchedulerCfg.IOWorkers)
+	scheduler := tasks.NewTaskScheduler(ctx, db.TxnMgr, db.Wal, db.Opts.SchedulerCfg.AsyncWorkers, db.Opts.SchedulerCfg.IOWorkers)
 	db.Runtime = dbutils.NewRuntime(
 		dbutils.WithRuntimeTransferTable(transferTable),
 		dbutils.WithRuntimeObjectFS(fs),
@@ -241,13 +241,13 @@ func Open(ctx context.Context, dirname string, opts *options.Options) (db *DB, e
 	db.DBLocker, dbLocker = dbLocker, nil
 
 	// Init timed scanner
-	scanner := NewDBScanner(db, nil)
+	scanner := newDBScanner(db, nil)
 	db.MergeScheduler = merge.NewScheduler(db.Runtime, db.CNMergeSched)
 	scanner.RegisterOp(db.MergeScheduler)
 	db.Wal.Start()
 	db.BGCheckpointRunner.Start()
 
-	db.BGScanner = w.NewHeartBeater(
+	db.BGScanner = tasks.NewTimerTask(
 		opts.CheckpointCfg.ScanInterval,
 		scanner)
 	db.BGScanner.Start()

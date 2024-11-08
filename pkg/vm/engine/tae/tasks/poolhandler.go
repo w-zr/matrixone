@@ -19,8 +19,6 @@ import (
 	"sync"
 
 	"github.com/matrixorigin/matrixone/pkg/logutil"
-	iops "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks/ops/base"
-	ops "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks/worker"
 	"github.com/panjf2000/ants/v2"
 )
 
@@ -28,51 +26,54 @@ var (
 	poolHandlerName = "PoolHandler"
 )
 
-type poolHandler struct {
-	BaseTaskHandler
-	opExec ops.OpExecFunc
-	pool   *ants.Pool
-	wg     *sync.WaitGroup
+type PoolHandler struct {
+	taskHandler *baseTaskHandler
+	opExec      opExecFunc
+	pool        *ants.Pool
+	wg          sync.WaitGroup
 }
 
-func NewPoolHandler(ctx context.Context, num int) *poolHandler {
+func NewPoolHandler(ctx context.Context, num int) *PoolHandler {
 	pool, err := ants.NewPool(num)
 	if err != nil {
 		panic(err)
 	}
-	h := &poolHandler{
-		BaseTaskHandler: *NewBaseEventHandler(ctx, poolHandlerName),
-		pool:            pool,
-		wg:              &sync.WaitGroup{},
+	h := &PoolHandler{
+		taskHandler: NewBaseTaskHandler(ctx, poolHandlerName),
+		pool:        pool,
 	}
-	h.opExec = h.ExecFunc
-	h.ExecFunc = h.doHandle
+	h.opExec = h.taskHandler.queue.execFunc
+	h.taskHandler.queue.execFunc = h.doHandle
 	return h
 }
 
-func (h *poolHandler) Execute(task Task) {
-	h.opExec(task)
+func (p *PoolHandler) Enqueue(task Task) {
+	p.taskHandler.Enqueue(task)
 }
 
-func (h *poolHandler) doHandle(op iops.IOp) {
-	closure := func(o iops.IOp, wg *sync.WaitGroup) func() {
+func (p *PoolHandler) Start() {
+	p.taskHandler.queue.Start()
+}
+
+func (h *PoolHandler) Close() error {
+	h.pool.Release()
+	h.taskHandler.Close()
+	h.wg.Wait()
+	return nil
+}
+
+func (h *PoolHandler) doHandle(task Task) {
+	closure := func(o Task) func() {
 		return func() {
 			h.opExec(o)
-			wg.Done()
+			h.wg.Done()
 		}
 	}
 	h.wg.Add(1)
-	err := h.pool.Submit(closure(op, h.wg))
+	err := h.pool.Submit(closure(task))
 	if err != nil {
 		logutil.Warnf("%v", err)
-		op.SetError(err)
+		task.SetError(err)
 		h.wg.Done()
 	}
-}
-
-func (h *poolHandler) Close() error {
-	h.pool.Release()
-	h.BaseTaskHandler.Close()
-	h.wg.Wait()
-	return nil
 }

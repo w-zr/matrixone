@@ -119,7 +119,7 @@ func (e *executor) executeFor(entry *catalog.TableEntry, mobjs []*catalog.Object
 }
 
 func (e *executor) scheduleMergeObjects(scopes []common.ID, mobjs []*catalog.ObjectEntry, entry *catalog.TableEntry, isTombstone bool) {
-	factory := func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
+	factory := func(ctx *tasks.Config, txn txnif.AsyncTxn) (tasks.Task, error) {
 		txn.GetMemo().IsFlushOrMerge = true
 		return jobs.NewMergeObjectsTask(ctx, txn, mobjs, e.rt, common.DefaultMaxOsizeObjMB*common.Const1MBytes, isTombstone)
 	}

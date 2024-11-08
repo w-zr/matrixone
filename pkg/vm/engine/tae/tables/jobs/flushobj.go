@@ -52,7 +52,7 @@ type flushObjTask struct {
 }
 
 func NewFlushObjTask(
-	ctx *tasks.Context,
+	ctx *tasks.Config,
 	schemaVer uint32,
 	seqnums []uint16,
 	fs *objectio.ObjectFS,

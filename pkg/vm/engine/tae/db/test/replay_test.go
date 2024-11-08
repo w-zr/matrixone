@@ -670,7 +670,7 @@ func TestReplayTableRows(t *testing.T) {
 	// 	ctx := &tasks.Context{Waitable: true}
 	// 	task, err := jobs.NewCompactBlockTask(ctx, txn, blk, tae3.Scheduler)
 	// 	assert.Nil(t, err)
-	// 	worker.SendOp(task)
+	// 	worker.Enqueue(task)
 	// 	err = task.WaitDone()
 	// 	assert.Nil(t, err)
 	// }

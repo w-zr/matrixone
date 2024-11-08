@@ -12,48 +12,45 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ops
+package tasks
 
 import (
 	"context"
 	"sync"
 	"time"
-
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks/worker/base"
 )
 
-type lamdaHandle struct {
+type lambdaHandle struct {
 	onExec func()
 	onStop func()
 }
 
-func (h *lamdaHandle) OnExec() {
+func (h *lambdaHandle) OnExec() {
 	if h.onExec != nil {
 		h.onExec()
 	}
 }
 
-func (h *lamdaHandle) OnStopped() {
+func (h *lambdaHandle) OnStopped() {
 	if h.onStop != nil {
 		h.onStop()
 	}
 }
 
-type heartbeater struct {
-	handle   base.IHBHandle
+type TimerTask struct {
+	handle   taskHandle
 	interval time.Duration
 	ctx      context.Context
 	cancel   context.CancelFunc
-	wg       *sync.WaitGroup
+	wg       sync.WaitGroup
 }
 
-func NewHeartBeaterWithFunc(interval time.Duration, onExec, onStop func()) *heartbeater {
-	h := &lamdaHandle{onExec: onExec, onStop: onStop}
-	return NewHeartBeater(interval, h)
+func NewTimerTaskWithFunc(interval time.Duration, onExec, onStop func()) *TimerTask {
+	return NewTimerTask(interval, &lambdaHandle{onExec: onExec, onStop: onStop})
 }
 
-func NewHeartBeater(interval time.Duration, handle base.IHBHandle) *heartbeater {
-	c := &heartbeater{
+func NewTimerTask(interval time.Duration, handle taskHandle) *TimerTask {
+	c := &TimerTask{
 		interval: interval,
 		handle:   handle,
 	}
@@ -61,25 +58,24 @@ func NewHeartBeater(interval time.Duration, handle base.IHBHandle) *heartbeater 
 	return c
 }
 
-func (c *heartbeater) Start() {
-	c.wg = &sync.WaitGroup{}
+func (c *TimerTask) Start() {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		ticker := time.NewTicker(c.interval)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-c.ctx.Done():
-				ticker.Stop()
 				return
 			case <-ticker.C:
-				c.handle.OnExec()
 			}
+			c.handle.OnExec()
 		}
 	}()
 }
 
-func (c *heartbeater) Stop() {
+func (c *TimerTask) Stop() {
 	c.cancel()
 	c.wg.Wait()
 	c.handle.OnStopped()

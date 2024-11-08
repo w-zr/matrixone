@@ -17,12 +17,13 @@ package tasks
 import (
 	"context"
 	"hash/fnv"
+	"sync/atomic"
+	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks/ops/base"
 )
 
 var (
@@ -30,7 +31,7 @@ var (
 	ErrScheduleScopeConflict = moerr.NewInternalErrorNoCtx("tae scheduler: scope conflict")
 )
 
-type FuncT = func() error
+type FuncT func() error
 
 type TaskType uint16
 
@@ -74,14 +75,23 @@ func init() {
 	taskIdAllocator = common.NewIdAllocator(1)
 }
 
-type TxnTaskFactory = func(ctx *Context, txn txnif.AsyncTxn) (Task, error)
+type TxnTaskFactory = func(ctx *Config, txn txnif.AsyncTxn) (Task, error)
 
 func NextTaskId() uint64 {
 	return taskIdAllocator.Alloc()
 }
 
 type Task interface {
-	base.IOp
+	OnExec(ctx context.Context) error
+	SetError(err error)
+	GetError() error
+	WaitDone(ctx context.Context) error
+	Waitable() bool
+	GetCreateTime() time.Time
+	GetStartTime() time.Time
+	GetEndTime() time.Time
+	GetExecuteTime() int64
+	AddObserver(Observer)
 	ID() uint64
 	Type() TaskType
 	Cancel() error
@@ -108,25 +118,21 @@ var DefaultScopeSharder = func(scope *common.ID) int {
 	return int(hasher.Sum64())
 }
 
-func IsSameScope(left, right *common.ID) bool {
-	return left.TableID == right.TableID && left.SegmentID().Eq(*right.SegmentID())
-}
-
 type FnTask struct {
 	*BaseTask
-	Fn FuncT
+	fn FuncT
 }
 
-func NewFnTask(ctx *Context, taskType TaskType, fn FuncT) *FnTask {
+func NewFnTask(ctx *Config, taskType TaskType, fn FuncT) *FnTask {
 	task := &FnTask{
-		Fn: fn,
+		fn: fn,
 	}
 	task.BaseTask = NewBaseTask(task, taskType, ctx)
 	return task
 }
 
 func (task *FnTask) Execute(ctx context.Context) error {
-	return task.Fn()
+	return task.fn()
 }
 
 type ScopedFnTask struct {
@@ -134,12 +140,12 @@ type ScopedFnTask struct {
 	scope *common.ID
 }
 
-func NewScopedFnTask(ctx *Context, taskType TaskType, scope *common.ID, fn FuncT) *ScopedFnTask {
+func NewScopedFnTask(ctx *Config, taskType TaskType, scope *common.ID, fn FuncT) *ScopedFnTask {
 	task := &ScopedFnTask{
 		FnTask: new(FnTask),
 		scope:  scope,
 	}
-	task.Fn = fn
+	task.fn = fn
 	task.BaseTask = NewBaseTask(task, taskType, ctx)
 	return task
 }
@@ -151,16 +157,44 @@ type MultiScopedFnTask struct {
 	scopes []common.ID
 }
 
-func NewMultiScopedFnTask(ctx *Context, taskType TaskType, scopes []common.ID, fn FuncT) *MultiScopedFnTask {
+func NewMultiScopedFnTask(ctx *Config, taskType TaskType, scopes []common.ID, fn FuncT) *MultiScopedFnTask {
 	task := &MultiScopedFnTask{
 		FnTask: new(FnTask),
 		scopes: scopes,
 	}
-	task.Fn = fn
+	task.fn = fn
 	task.BaseTask = NewBaseTask(task, taskType, ctx)
 	return task
 }
 
 func (task *MultiScopedFnTask) Scopes() []common.ID {
 	return task.scopes
+}
+
+type Op struct {
+	impl       IOpInternal
+	errorC     chan error
+	waitedOnce atomic.Bool
+	err        error
+	result     any
+	createTime time.Time
+	startTime  time.Time
+	endTime    time.Time
+	doneCB     opExecFunc
+	observers  []Observer
+}
+
+type Observer interface {
+	OnExecDone(any)
+}
+
+type IOpInternal interface {
+	PreExecute() error
+	Execute(ctx context.Context) error
+	PostExecute() error
+}
+
+type taskHandle interface {
+	OnExec()
+	OnStopped()
 }

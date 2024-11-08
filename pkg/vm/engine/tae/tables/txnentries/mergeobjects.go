@@ -183,7 +183,7 @@ func (entry *mergeObjectsEntry) PrepareRollback() (err error) {
 
 	fs := entry.rt.Fs.Service
 	// for io task, dispatch by round robin, scope can be nil
-	entry.rt.Scheduler.ScheduleScopedFn(&tasks.Context{}, tasks.IOTask, nil, func() error {
+	entry.rt.Scheduler.ScheduleScopedFn(&tasks.Config{}, tasks.IOTask, nil, func() error {
 		// TODO: variable as timeout
 		ctx, cancel := context.WithTimeoutCause(context.Background(), 2*time.Minute, moerr.CausePrepareRollback2)
 

@@ -66,7 +66,7 @@ func WithRuntimeTransferTable(tt *model.HashPageTable) RuntimeOption {
 	}
 }
 
-func WithRuntimeScheduler(s tasks.TaskScheduler) RuntimeOption {
+func WithRuntimeScheduler(s tasks.Scheduler) RuntimeOption {
 	return func(r *Runtime) {
 		r.Scheduler = s
 	}
@@ -267,7 +267,7 @@ type Runtime struct {
 
 	TransferTable   *model.HashPageTable
 	TransferDelsMap *model.TransDelsForBlks
-	Scheduler       tasks.TaskScheduler
+	Scheduler       tasks.Scheduler
 
 	LockMergeService *LockMergeService
 

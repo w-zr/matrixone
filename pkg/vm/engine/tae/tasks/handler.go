@@ -18,26 +18,25 @@ import (
 	"context"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
-	ops "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks/worker"
+	"io"
 )
 
 var (
 	ErrTaskHandleEnqueue = moerr.NewInternalErrorNoCtx("tae: task handle enqueue")
 )
 
-type BaseTaskHandler struct {
-	ops.OpWorker
+type baseTaskHandler struct {
+	queue OpQueue
 }
 
-func NewBaseEventHandler(ctx context.Context, name string) *BaseTaskHandler {
-	h := &BaseTaskHandler{
-		OpWorker: *ops.NewOpWorker(ctx, name),
+func NewBaseTaskHandler(ctx context.Context, name string) *baseTaskHandler {
+	return &baseTaskHandler{
+		queue: *NewOpQueue(ctx, name),
 	}
-	return h
 }
 
-func (h *BaseTaskHandler) Enqueue(task Task) {
-	if !h.SendOp(task) {
+func (h *baseTaskHandler) Enqueue(task Task) {
+	if !h.queue.Enqueue(task) {
 		task.SetError(ErrTaskHandleEnqueue)
 		err := task.Cancel()
 		if err != nil {
@@ -46,22 +45,21 @@ func (h *BaseTaskHandler) Enqueue(task Task) {
 	}
 }
 
-func (h *BaseTaskHandler) Execute(task Task) {
-	h.ExecFunc(task)
+func (h *baseTaskHandler) Start() {
+	h.queue.Start()
 }
 
-func (h *BaseTaskHandler) Close() error {
-	h.Stop()
+func (h *baseTaskHandler) Close() error {
+	h.queue.Stop()
 	return nil
 }
 
-type singleWorkerHandler struct {
-	BaseTaskHandler
-}
+var (
+	ErrDispatchWrongTask = moerr.NewInternalErrorNoCtx("tae: wrong task type")
+)
 
-func NewSingleWorkerHandler(ctx context.Context, name string) *singleWorkerHandler {
-	h := &singleWorkerHandler{
-		BaseTaskHandler: *NewBaseEventHandler(ctx, name),
-	}
-	return h
+type TaskHandler interface {
+	io.Closer
+	Start()
+	Enqueue(Task)
 }

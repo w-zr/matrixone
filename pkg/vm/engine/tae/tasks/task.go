@@ -12,30 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package db
+package tasks
 
 import (
 	"context"
 
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
 )
 
 type ScheduledTxnTask struct {
-	*tasks.BaseTask
-	db      *DB
-	factory tasks.TxnTaskFactory
+	*BaseTask
+	ctx     context.Context
+	txnMgr  *txnbase.TxnManager
+	factory TxnTaskFactory
 	scopes  []common.ID
 }
 
-func NewScheduledTxnTask(ctx *tasks.Context, db *DB, taskType tasks.TaskType, scopes []common.ID, factory tasks.TxnTaskFactory) (task *ScheduledTxnTask) {
+func NewScheduledTxnTask(
+	ctx context.Context,
+	txnMgr *txnbase.TxnManager,
+	taskType TaskType,
+	cfg *Config,
+	scopes []common.ID,
+	factory TxnTaskFactory) (task *ScheduledTxnTask) {
 	task = &ScheduledTxnTask{
-		db:      db,
+		ctx:     ctx,
+		txnMgr:  txnMgr,
 		factory: factory,
 		scopes:  scopes,
 	}
-	task.BaseTask = tasks.NewBaseTask(task, taskType, ctx)
+	task.BaseTask = NewBaseTask(task, taskType, cfg)
 	return
 }
 
@@ -48,11 +56,11 @@ func (task *ScheduledTxnTask) Scope() *common.ID {
 }
 
 func (task *ScheduledTxnTask) Execute(ctx context.Context) (err error) {
-	txn, err := task.db.TxnMgr.StartTxn(nil)
+	txn, err := task.txnMgr.StartTxn(nil)
 	if err != nil {
 		return
 	}
-	txnTask, err := task.factory(&tasks.Context{ID: task.ID()}, txn)
+	txnTask, err := task.factory(&Config{ID: task.ID()}, txn)
 	if err != nil {
 		err2 := txn.Rollback(ctx)
 		if err2 != nil {
@@ -61,7 +69,7 @@ func (task *ScheduledTxnTask) Execute(ctx context.Context) (err error) {
 		logutil.Warnf("Execute ScheduleTxnTask: %v. Rollbacked", err)
 		return
 	}
-	err = txnTask.OnExec(task.db.Opts.Ctx)
+	err = txnTask.OnExec(task.ctx)
 	if err != nil {
 		logutil.Warnf("Task[%d] exec error: %v", task.ID(), err)
 		err2 := txn.Rollback(ctx)

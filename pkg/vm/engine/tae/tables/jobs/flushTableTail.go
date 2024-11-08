@@ -55,7 +55,7 @@ type TestFlushBailoutPos2 struct{}
 var FlushTableTailTaskFactory = func(
 	metas, tombstones []*catalog.ObjectEntry, rt *dbutils.Runtime,
 ) tasks.TxnTaskFactory {
-	return func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
+	return func(ctx *tasks.Config, txn txnif.AsyncTxn) (tasks.Task, error) {
 		txn.GetMemo().IsFlushOrMerge = true
 		return NewFlushTableTailTask(ctx, txn, metas, tombstones, rt)
 	}
@@ -134,7 +134,7 @@ type flushTableTailTask struct {
 // old startts which is not able to collect all appends in the ablock.
 
 func NewFlushTableTailTask(
-	ctx *tasks.Context,
+	ctx *tasks.Config,
 	txn txnif.AsyncTxn,
 	objs []*catalog.ObjectEntry,
 	tombStones []*catalog.ObjectEntry,

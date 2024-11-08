@@ -26,7 +26,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks"
-	iops "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks/ops/base"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/testutils"
 )
 
@@ -34,37 +33,37 @@ const (
 	ModuleName = "TAETXN"
 )
 
-var _ tasks.TaskScheduler = new(testScheduler)
+var _ tasks.Scheduler = new(testScheduler)
 
 type testScheduler struct {
 }
 
-func (tSched *testScheduler) ScheduleTxnTask(ctx *tasks.Context, taskType tasks.TaskType, factory tasks.TxnTaskFactory) (tasks.Task, error) {
+func (tSched *testScheduler) ScheduleTxnTask(ctx *tasks.Config, taskType tasks.TaskType, factory tasks.TxnTaskFactory) (tasks.Task, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (tSched *testScheduler) ScheduleMultiScopedTxnTask(ctx *tasks.Context, taskType tasks.TaskType, scopes []common.ID, factory tasks.TxnTaskFactory) (tasks.Task, error) {
+func (tSched *testScheduler) ScheduleMultiScopedTxnTask(ctx *tasks.Config, taskType tasks.TaskType, scopes []common.ID, factory tasks.TxnTaskFactory) (tasks.Task, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (tSched *testScheduler) ScheduleMultiScopedTxnTaskWithObserver(ctx *tasks.Context, taskType tasks.TaskType, scopes []common.ID, factory tasks.TxnTaskFactory, observers ...iops.Observer) (tasks.Task, error) {
+func (tSched *testScheduler) ScheduleMultiScopedTxnTaskWithObserver(ctx *tasks.Config, taskType tasks.TaskType, scopes []common.ID, factory tasks.TxnTaskFactory, observers ...tasks.Observer) (tasks.Task, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (tSched *testScheduler) ScheduleMultiScopedFn(ctx *tasks.Context, taskType tasks.TaskType, scopes []common.ID, fn tasks.FuncT) (tasks.Task, error) {
+func (tSched *testScheduler) ScheduleMultiScopedFn(ctx *tasks.Config, taskType tasks.TaskType, scopes []common.ID, fn tasks.FuncT) (tasks.Task, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (tSched *testScheduler) ScheduleFn(ctx *tasks.Context, taskType tasks.TaskType, fn func() error) (tasks.Task, error) {
+func (tSched *testScheduler) ScheduleFn(ctx *tasks.Config, taskType tasks.TaskType, fn func() error) (tasks.Task, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (tSched *testScheduler) ScheduleScopedFn(ctx *tasks.Context, taskType tasks.TaskType, scope *common.ID, fn func() error) (tasks.Task, error) {
+func (tSched *testScheduler) ScheduleScopedFn(ctx *tasks.Config, taskType tasks.TaskType, scope *common.ID, fn func() error) (tasks.Task, error) {
 	return nil, fn()
 }
 

@@ -64,7 +64,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/jobs"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks"
-	ops "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks/worker"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/testutils"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/testutils/config"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
@@ -123,7 +122,7 @@ func TestAppend2(t *testing.T) {
 
 	// this task won't affect logic of TestAppend2, it just prints logs about dirty count
 	// forest := logtail.NewDirtyCollector(db.LogtailMgr, opts.Clock, db.Catalog, new(catalog.LoopProcessor))
-	// hb := ops.NewHeartBeaterWithFunc(5*time.Millisecond, func() {
+	// hb := ops.NewTimerTaskWithFunc(5*time.Millisecond, func() {
 	// 	forest.Run()
 	// 	t.Log(forest.String())
 	// }, nil)
@@ -571,7 +570,7 @@ func TestAddObjsWithMetaLoc(t *testing.T) {
 	db := testutil.InitTestDB(ctx, ModuleName, t, opts)
 	defer db.Close()
 
-	worker := ops.NewOpWorker(context.Background(), "xx")
+	worker := tasks.NewOpQueue(context.Background(), "xx")
 	worker.Start()
 	defer worker.Stop()
 	schema := catalog.MockSchemaAll(13, 2)
@@ -606,7 +605,7 @@ func TestAddObjsWithMetaLoc(t *testing.T) {
 
 		task1, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, []*catalog.ObjectEntry{blkMeta1, blkMeta2}, nil, db.Runtime)
 		assert.NoError(t, err)
-		worker.SendOp(task1)
+		worker.Enqueue(task1)
 		err = task1.WaitDone(context.Background())
 		assert.NoError(t, err)
 		newBlockFp1 = task1.GetCreatedObjects().Fingerprint()
@@ -749,7 +748,7 @@ func TestCompactMemAlter(t *testing.T) {
 	db := testutil.InitTestDB(ctx, ModuleName, t, opts)
 	defer db.Close()
 
-	worker := ops.NewOpWorker(context.Background(), "xx")
+	worker := tasks.NewOpQueue(context.Background(), "xx")
 	worker.Start()
 	defer worker.Stop()
 	schema := catalog.MockSchemaAll(5, 2)
@@ -773,7 +772,7 @@ func TestCompactMemAlter(t *testing.T) {
 		// ablk-0 & nablk-1
 		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, []*catalog.ObjectEntry{blkMeta}, nil, db.Runtime)
 		assert.NoError(t, err)
-		worker.SendOp(task)
+		worker.Enqueue(task)
 		err = task.WaitDone(ctx)
 		assert.NoError(t, err)
 		assert.NoError(t, txn.Commit(context.Background()))
@@ -810,7 +809,7 @@ func TestFlushTableMergeOrder(t *testing.T) {
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
 
-	worker := ops.NewOpWorker(context.Background(), "xx")
+	worker := tasks.NewOpQueue(context.Background(), "xx")
 	worker.Start()
 	defer worker.Stop()
 
@@ -869,7 +868,7 @@ func TestFlushTableMergeOrder(t *testing.T) {
 	tombstoneMetas := testutil.GetAllBlockMetas(rel, true)
 	task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tombstoneMetas, tae.DB.Runtime)
 	assert.NoError(t, err)
-	worker.SendOp(task)
+	worker.Enqueue(task)
 	err = task.WaitDone(ctx)
 	assert.NoError(t, err)
 	assert.NoError(t, txn.Commit(context.Background()))
@@ -884,7 +883,7 @@ func TestFlushTableMergeOrderPK(t *testing.T) {
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
 
-	worker := ops.NewOpWorker(context.Background(), "xx")
+	worker := tasks.NewOpQueue(context.Background(), "xx")
 	worker.Start()
 	defer worker.Stop()
 
@@ -941,7 +940,7 @@ func TestFlushTableMergeOrderPK(t *testing.T) {
 	tombstoneMetas := testutil.GetAllBlockMetas(rel, true)
 	task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tombstoneMetas, tae.DB.Runtime)
 	assert.NoError(t, err)
-	worker.SendOp(task)
+	worker.Enqueue(task)
 	err = task.WaitDone(ctx)
 	assert.NoError(t, err)
 	assert.NoError(t, txn.Commit(context.Background()))
@@ -960,7 +959,7 @@ func TestFlushTableNoPk(t *testing.T) {
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
 
-	worker := ops.NewOpWorker(context.Background(), "xx")
+	worker := tasks.NewOpQueue(context.Background(), "xx")
 	worker.Start()
 	defer worker.Stop()
 	schema := catalog.MockSchemaAll(13, -1)
@@ -977,7 +976,7 @@ func TestFlushTableNoPk(t *testing.T) {
 	tombstoneMetas := testutil.GetAllBlockMetas(rel, true)
 	task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tombstoneMetas, tae.DB.Runtime)
 	assert.NoError(t, err)
-	worker.SendOp(task)
+	worker.Enqueue(task)
 	err = task.WaitDone(ctx)
 	assert.NoError(t, err)
 	assert.NoError(t, txn.Commit(context.Background()))
@@ -996,7 +995,7 @@ func TestFlushTableDroppedEntry(t *testing.T) {
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
 
-	worker := ops.NewOpWorker(context.Background(), "xx")
+	worker := tasks.NewOpQueue(context.Background(), "xx")
 	worker.Start()
 	defer worker.Stop()
 	schema := catalog.MockSchemaAll(3, 1)
@@ -1023,7 +1022,7 @@ func TestFlushTableDroppedEntry(t *testing.T) {
 		tombstoneMetas = testutil.GetAllBlockMetas(rel, true)
 		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tombstoneMetas, tae.DB.Runtime)
 		assert.NoError(t, err)
-		worker.SendOp(task)
+		worker.Enqueue(task)
 		err = task.WaitDone(ctx)
 		assert.NoError(t, err)
 		assert.NoError(t, txn.Commit(context.Background()))
@@ -1044,7 +1043,7 @@ func TestFlushTableDroppedEntry(t *testing.T) {
 		txn, _ := testutil.GetDefaultRelation(t, tae.DB, schema.Name)
 		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tombstoneMetas, tae.DB.Runtime)
 		assert.NoError(t, err)
-		worker.SendOp(task)
+		worker.Enqueue(task)
 		err = task.WaitDone(ctx)
 		assert.NoError(t, err)
 		assert.NoError(t, txn.Commit(context.Background()))
@@ -1062,7 +1061,7 @@ func TestFlushTableErrorHandle(t *testing.T) {
 	tae := testutil.NewTestEngine(context.Background(), ModuleName, t, opts)
 	defer tae.Close()
 
-	worker := ops.NewOpWorker(ctx, "xx")
+	worker := tasks.NewOpQueue(ctx, "xx")
 	worker.Start()
 	defer worker.Stop()
 	schema := catalog.MockSchemaAll(13, 2)
@@ -1092,7 +1091,7 @@ func TestFlushTableErrorHandle(t *testing.T) {
 		tombstoneMetas := testutil.GetAllBlockMetas(rel, true)
 		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tombstoneMetas, tae.Runtime)
 		assert.NoError(t, err)
-		worker.SendOp(task)
+		worker.Enqueue(task)
 		err = task.WaitDone(ctx)
 		assert.Error(t, err)
 		assert.NoError(t, txn.Rollback(context.Background()))
@@ -1113,10 +1112,10 @@ func TestFlushTableErrorHandle2(t *testing.T) {
 	tae := testutil.NewTestEngine(context.Background(), ModuleName, t, opts)
 	defer tae.Close()
 
-	worker := ops.NewOpWorker(ctx, "xx")
+	worker := tasks.NewOpQueue(ctx, "xx")
 	worker.Start()
 	defer worker.Stop()
-	goodworker := ops.NewOpWorker(context.Background(), "goodworker")
+	goodworker := tasks.NewOpQueue(context.Background(), "goodworker")
 	goodworker.Start()
 	defer goodworker.Stop()
 	schema := catalog.MockSchemaAll(13, 2)
@@ -1126,13 +1125,13 @@ func TestFlushTableErrorHandle2(t *testing.T) {
 	bat1, bat2 := bats[0], bats[1]
 	defer bat1.Close()
 	defer bat2.Close()
-	flushTable := func(worker *ops.OpWorker) {
+	flushTable := func(worker *tasks.OpQueue) {
 		txn, rel := testutil.GetDefaultRelation(t, tae.DB, schema.Name)
 		blkMetas := testutil.GetAllAppendableMetas(rel, false)
 		tombstoneMetas := testutil.GetAllAppendableMetas(rel, true)
 		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tombstoneMetas, tae.Runtime)
 		assert.NoError(t, err)
-		worker.SendOp(task)
+		worker.Enqueue(task)
 		err = task.WaitDone(ctx)
 		if err != nil {
 			t.Logf("flush task outter wait %v", err)
@@ -1164,7 +1163,7 @@ func TestFlushTabletail(t *testing.T) {
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
 
-	worker := ops.NewOpWorker(context.Background(), "xx")
+	worker := tasks.NewOpQueue(context.Background(), "xx")
 	worker.Start()
 	defer worker.Stop()
 	schema := catalog.MockSchemaAll(13, 2)
@@ -1202,7 +1201,7 @@ func TestFlushTabletail(t *testing.T) {
 		tombstoneMetas := testutil.GetAllAppendableMetas(rel, true)
 		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tombstoneMetas, tae.Runtime)
 		assert.NoError(t, err)
-		worker.SendOp(task)
+		worker.Enqueue(task)
 		err = task.WaitDone(ctx)
 		assert.NoError(t, err)
 		assert.NoError(t, txn.Commit(context.Background()))
@@ -3474,7 +3473,7 @@ func TestDelete3(t *testing.T) {
 
 	// this task won't affect logic of TestAppend2, it just prints logs about dirty count
 	forest := logtail.NewDirtyCollector(tae.LogtailMgr, opts.Clock, tae.Catalog, new(catalog.LoopProcessor))
-	hb := ops.NewHeartBeaterWithFunc(5*time.Millisecond, func() {
+	hb := tasks.NewTimerTaskWithFunc(5*time.Millisecond, func() {
 		forest.Run(0)
 		t.Log(forest.String())
 	}, nil)
