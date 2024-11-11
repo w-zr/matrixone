@@ -133,14 +133,13 @@ func Open(ctx context.Context, dirname string, opts *options.Options) (db *DB, e
 	case options.LogstoreLogservice:
 		db.Wal = wal.NewDriverWithLogservice(opts.Ctx, opts.Lc)
 	}
-	scheduler := tasks.NewTaskScheduler(ctx, db.TxnMgr, db.Wal, db.Opts.SchedulerCfg.AsyncWorkers, db.Opts.SchedulerCfg.IOWorkers)
+
 	db.Runtime = dbutils.NewRuntime(
 		dbutils.WithRuntimeTransferTable(transferTable),
 		dbutils.WithRuntimeObjectFS(fs),
 		dbutils.WithRuntimeLocalFS(localFs),
 		dbutils.WithRuntimeSmallPool(dbutils.MakeDefaultSmallPool("small-vector-pool")),
 		dbutils.WithRuntimeTransientPool(dbutils.MakeDefaultTransientPool("trasient-vector-pool")),
-		dbutils.WithRuntimeScheduler(scheduler),
 		dbutils.WithRuntimeOptions(db.Opts),
 	)
 
@@ -173,6 +172,7 @@ func Open(ctx context.Context, dirname string, opts *options.Options) (db *DB, e
 	db.TxnMgr.CommitListener.AddTxnCommitListener(db.LogtailMgr)
 	db.TxnMgr.Start(opts.Ctx)
 	db.LogtailMgr.Start()
+	db.Runtime.Scheduler = tasks.NewTaskScheduler(ctx, db.TxnMgr, db.Wal, db.Opts.SchedulerCfg)
 	db.BGCheckpointRunner = checkpoint.NewRunner(
 		opts.Ctx,
 		db.Runtime,

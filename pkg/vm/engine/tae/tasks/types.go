@@ -16,12 +16,9 @@ package tasks
 
 import (
 	"context"
-	"hash/fnv"
-	"sync/atomic"
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
-	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 )
@@ -108,16 +105,6 @@ type MScopedTask interface {
 	Scopes() []common.ID
 }
 
-var DefaultScopeSharder = func(scope *common.ID) int {
-	if scope == nil {
-		return 0
-	}
-	hasher := fnv.New64a()
-	hasher.Write(types.EncodeUint64(&scope.TableID))
-	hasher.Write(types.EncodeUuid(scope.SegmentID()))
-	return int(hasher.Sum64())
-}
-
 type FnTask struct {
 	*BaseTask
 	fn FuncT
@@ -169,19 +156,6 @@ func NewMultiScopedFnTask(ctx *Config, taskType TaskType, scopes []common.ID, fn
 
 func (task *MultiScopedFnTask) Scopes() []common.ID {
 	return task.scopes
-}
-
-type Op struct {
-	impl       IOpInternal
-	errorC     chan error
-	waitedOnce atomic.Bool
-	err        error
-	result     any
-	createTime time.Time
-	startTime  time.Time
-	endTime    time.Time
-	doneCB     opExecFunc
-	observers  []Observer
 }
 
 type Observer interface {

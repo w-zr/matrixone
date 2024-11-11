@@ -17,6 +17,7 @@ package tasks
 import (
 	"context"
 	"fmt"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/options"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
@@ -59,18 +60,12 @@ func (s *taskScheduler) Start() {
 	s.typedHandler.Start()
 }
 
-func NewTaskScheduler(
-	ctx context.Context,
-	txnMgr *txnbase.TxnManager,
-	wal wal.Driver,
-	asyncWorkers int,
-	ioWorkers int,
-) *taskScheduler {
-	if asyncWorkers < 0 {
-		panic(fmt.Sprintf("bad param: %d txn workers", asyncWorkers))
+func NewTaskScheduler(ctx context.Context, txnMgr *txnbase.TxnManager, wal wal.Driver, cfg *options.SchedulerCfg) *taskScheduler {
+	if cfg.AsyncWorkers < 0 {
+		panic(fmt.Sprintf("bad param: %d txn workers", cfg.AsyncWorkers))
 	}
-	if ioWorkers < 0 {
-		panic(fmt.Sprintf("bad param: %d io workers", ioWorkers))
+	if cfg.IOWorkers < 0 {
+		panic(fmt.Sprintf("bad param: %d io workers", cfg.IOWorkers))
 	}
 	s := &taskScheduler{
 		ctx:          ctx,
@@ -79,21 +74,21 @@ func NewTaskScheduler(
 		wal:          wal,
 	}
 	jobHandler := NewScopeCheckTaskHandlerDispatcher()
-	mergeHandler := NewPoolHandler(ctx, asyncWorkers)
+	mergeHandler := NewPoolHandler(ctx, cfg.AsyncWorkers)
 	jobHandler.AddHandle(DataCompactionTask, mergeHandler)
 	gcHandler := NewBaseTaskHandler(ctx, "gc")
 	jobHandler.AddHandle(GCTask, gcHandler)
-	flushHandler := NewPoolHandler(ctx, asyncWorkers)
+	flushHandler := NewPoolHandler(ctx, cfg.AsyncWorkers)
 	jobHandler.AddHandle(FlushTableTailTask, flushHandler)
 
-	ckpHandler := NewShardedTaskHandler(DefaultScopeSharder)
+	ckpHandler := NewShardedTaskHandler(DefaultScopeHasher)
 	for i := 0; i < 4; i++ {
 		handler := NewBaseTaskHandler(ctx, fmt.Sprintf("[ckpworker-%d]", i))
 		ckpHandler.AddHandle(handler)
 	}
 
 	ioHandler := NewShardedTaskHandler(nil)
-	for i := 0; i < ioWorkers; i++ {
+	for i := 0; i < cfg.IOWorkers; i++ {
 		handler := NewBaseTaskHandler(ctx, fmt.Sprintf("[ioworker-%d]", i))
 		ioHandler.AddHandle(handler)
 	}
