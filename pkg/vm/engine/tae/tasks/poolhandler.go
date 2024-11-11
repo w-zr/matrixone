@@ -27,10 +27,11 @@ var (
 )
 
 type PoolHandler struct {
-	taskHandler *baseTaskHandler
+	wg   sync.WaitGroup
+	pool *ants.Pool
+
 	opExec      opExecFunc
-	pool        *ants.Pool
-	wg          sync.WaitGroup
+	taskHandler *baseTaskHandler
 }
 
 func NewPoolHandler(ctx context.Context, num int) *PoolHandler {

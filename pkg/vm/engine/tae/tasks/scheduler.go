@@ -81,7 +81,7 @@ func NewTaskScheduler(ctx context.Context, txnMgr *txnbase.TxnManager, wal wal.D
 	flushHandler := NewPoolHandler(ctx, cfg.AsyncWorkers)
 	jobHandler.AddHandle(FlushTableTailTask, flushHandler)
 
-	ckpHandler := NewShardedTaskHandler(DefaultScopeHasher)
+	ckpHandler := NewShardedTaskHandler(defaultScopeHasher)
 	for i := 0; i < 4; i++ {
 		handler := NewBaseTaskHandler(ctx, fmt.Sprintf("[ckpworker-%d]", i))
 		ckpHandler.AddHandle(handler)

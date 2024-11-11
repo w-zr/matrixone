@@ -9,8 +9,9 @@ import (
 
 type ScopeCheckTaskHandler struct {
 	sync.RWMutex
-	handler *TypedTaskHandler
 	actives map[common.ID]struct{}
+
+	handler *TypedTaskHandler
 }
 
 func (s *ScopeCheckTaskHandler) Start() {

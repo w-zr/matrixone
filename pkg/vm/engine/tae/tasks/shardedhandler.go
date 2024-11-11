@@ -8,7 +8,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 )
 
-var DefaultScopeHasher = func(scope *common.ID) int {
+var defaultScopeHasher = func(scope *common.ID) int {
 	if scope == nil {
 		return 0
 	}
@@ -20,9 +20,10 @@ var DefaultScopeHasher = func(scope *common.ID) int {
 
 type scopeHasher func(scope *common.ID) int
 type ShardedTaskHandler struct {
+	hasher scopeHasher
+	curr   atomic.Uint64
+
 	handlers []TaskHandler
-	hasher   scopeHasher
-	curr     atomic.Uint64
 }
 
 func NewShardedTaskHandler(hasher scopeHasher) *ShardedTaskHandler {
