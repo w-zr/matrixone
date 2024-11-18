@@ -15,10 +15,13 @@
 package merge
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
@@ -31,6 +34,47 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/jobs"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks"
 )
+
+type debugStats struct {
+	sync.RWMutex
+
+	m map[string]int
+}
+
+func (s *debugStats) Add(e string, size int) {
+	s.Lock()
+	s.m[e] += size
+	s.Unlock()
+}
+
+func (s *debugStats) String() string {
+	s.RLock()
+	defer s.RUnlock()
+
+	slice := make([]string, 0, len(s.m))
+	for k := range s.m {
+		slice = append(slice, k)
+	}
+	slices.SortFunc(slice, func(a, b string) int {
+		return cmp.Compare(s.m[a], s.m[b])
+	})
+
+	var builder strings.Builder
+	builder.WriteString("total merged size by table:\n")
+	for _, k := range slice {
+		builder.WriteString(k)
+		builder.WriteString(": ")
+		builder.WriteString(common.HumanReadableBytes(s.m[k]))
+		builder.WriteByte('\n')
+	}
+	return builder.String()
+}
+
+var debug debugStats
+
+func init() {
+	debug.m = make(map[string]int)
+}
 
 // executor consider resources to decide to merge or not.
 type executor struct {
@@ -127,5 +171,6 @@ func (e *executor) scheduleMergeObjects(scopes []common.ID, mobjs []*catalog.Obj
 		}
 		return
 	}
+	debug.Add(fmt.Sprintf("%d-%s", entry.ID, entry.GetLastestSchema(isTombstone).Name), originalSize(mobjs))
 	entry.Stats.SetLastMergeTime()
 }

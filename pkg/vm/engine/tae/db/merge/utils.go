@@ -131,6 +131,7 @@ func (c *resourceController) printStats() {
 		common.AnyField("reserving-rows", common.HumanReadableBytes(int(c.reservedMergeRows))),
 		common.AnyField("reserving-mem", common.HumanReadableBytes(int(c.reserved))),
 	)
+	logutil.Info(debug.String())
 }
 
 func (c *resourceController) reserveResources(objs []*catalog.ObjectEntry) {
