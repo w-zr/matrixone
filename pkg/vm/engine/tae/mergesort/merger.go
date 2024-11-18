@@ -37,50 +37,10 @@ type releasableBatch struct {
 	releaseF func()
 }
 
-type fixedDataFetcher[T any] struct {
-	mustColFunc func(*vector.Vector) []T
-	cols        [][]T
-}
-
-func (f *fixedDataFetcher[T]) mustToCol(v *vector.Vector, i uint32) {
-	f.cols[i] = f.mustColFunc(v)
-}
-
-func (f *fixedDataFetcher[T]) length(i uint32) int {
-	return len(f.cols[i])
-}
-
-func (f *fixedDataFetcher[T]) at(i, j uint32) T {
-	return f.cols[i][j]
-}
-
-type varlenaDataFetcher struct {
-	cols []struct {
-		data []types.Varlena
-		area []byte
-	}
-}
-
-func (f *varlenaDataFetcher) mustToCol(v *vector.Vector, i uint32) {
-	data, area := vector.MustVarlenaRawData(v)
-	f.cols[i] = struct {
-		data []types.Varlena
-		area []byte
-	}{data: data, area: area}
-}
-
-func (f *varlenaDataFetcher) at(i, j uint32) string {
-	return f.cols[i].data[j].UnsafeGetString(f.cols[i].area)
-}
-
-func (f *varlenaDataFetcher) length(i uint32) int {
-	return len(f.cols[i].data)
-}
-
 type merger[T comparable] struct {
 	heap *heapSlice[T]
 
-	df      dataFetcher[T]
+	df      vector.DataSlice[T]
 	deletes []*nulls.Nulls
 	nulls   []*nulls.Nulls
 
@@ -104,7 +64,7 @@ type merger[T comparable] struct {
 	stats     mergeStats
 }
 
-func newMerger[T comparable](host MergeTaskHost, lessFunc sort.LessFunc[T], sortKeyPos int, df dataFetcher[T]) Merger {
+func newMerger[T comparable](host MergeTaskHost, lessFunc sort.LessFunc[T], sortKeyPos int, df vector.DataSlice[T]) Merger {
 	size := host.GetObjectCnt()
 	rowSizeU64 := host.GetTotalSize() / uint64(host.GetTotalRowCnt())
 	m := &merger[T]{
@@ -151,7 +111,7 @@ func (m *merger[T]) merge(ctx context.Context) error {
 		}
 
 		heapPush(m.heap, heapElem[T]{
-			data:   m.df.at(uint32(i), 0),
+			data:   m.df.At(i, 0),
 			isNull: m.nulls[i].Contains(0),
 			src:    uint32(i),
 		})
@@ -288,7 +248,7 @@ func (m *merger[T]) loadBlk(ctx context.Context, objIdx uint32) (bool, error) {
 	m.loadedObjBlkCnts[objIdx]++
 
 	vec := nextBatch.GetVector(int32(m.sortKeyIdx))
-	m.df.mustToCol(vec, objIdx)
+	m.df.MustToCol(vec, objIdx)
 	m.nulls[objIdx] = vec.GetNulls()
 	m.deletes[objIdx] = del
 	m.rowIdx[objIdx] = 0
@@ -297,14 +257,14 @@ func (m *merger[T]) loadBlk(ctx context.Context, objIdx uint32) (bool, error) {
 
 func (m *merger[T]) pushNewElem(ctx context.Context, objIdx uint32) error {
 	m.rowIdx[objIdx]++
-	if m.rowIdx[objIdx] >= uint32(m.df.length(objIdx)) {
+	if m.rowIdx[objIdx] >= uint32(m.df.Length(int(objIdx))) {
 		if ok, err := m.loadBlk(ctx, objIdx); !ok {
 			return err
 		}
 	}
 	nextRow := m.rowIdx[objIdx]
 	heapPush(m.heap, heapElem[T]{
-		data:   m.df.at(objIdx, nextRow),
+		data:   m.df.At(int(objIdx), int(nextRow)),
 		isNull: m.nulls[objIdx].Contains(uint64(nextRow)),
 		src:    objIdx,
 	})
@@ -335,152 +295,78 @@ func mergeObjs(ctx context.Context, mergeHost MergeTaskHost, sortKeyPos int) err
 	typ := mergeHost.GetSortKeyType()
 	size := mergeHost.GetObjectCnt()
 	if typ.IsVarlen() {
-		df := &varlenaDataFetcher{
-			cols: make([]struct {
-				data []types.Varlena
-				area []byte
-			}, size),
-		}
+		df := vector.NewVarlenaDataSlice(size)
 		merger = newMerger(mergeHost, sort.GenericLess[string], sortKeyPos, df)
 	} else {
 		switch typ.Oid {
 		case types.T_bool:
-			df := &fixedDataFetcher[bool]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[bool],
-				cols:        make([][]bool, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[bool], size)
 			merger = newMerger(mergeHost, sort.BoolLess, sortKeyPos, df)
 		case types.T_bit:
-			df := &fixedDataFetcher[uint64]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[uint64],
-				cols:        make([][]uint64, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[uint64], size)
 			merger = newMerger(mergeHost, sort.GenericLess[uint64], sortKeyPos, df)
 		case types.T_int8:
-			df := &fixedDataFetcher[int8]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[int8],
-				cols:        make([][]int8, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[int8], size)
 			merger = newMerger(mergeHost, sort.GenericLess[int8], sortKeyPos, df)
 		case types.T_int16:
-			df := &fixedDataFetcher[int16]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[int16],
-				cols:        make([][]int16, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[int16], size)
 			merger = newMerger(mergeHost, sort.GenericLess[int16], sortKeyPos, df)
 		case types.T_int32:
-			df := &fixedDataFetcher[int32]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[int32],
-				cols:        make([][]int32, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[int32], size)
 			merger = newMerger(mergeHost, sort.GenericLess[int32], sortKeyPos, df)
 		case types.T_int64:
-			df := &fixedDataFetcher[int64]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[int64],
-				cols:        make([][]int64, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[int64], size)
 			merger = newMerger(mergeHost, sort.GenericLess[int64], sortKeyPos, df)
 		case types.T_float32:
-			df := &fixedDataFetcher[float32]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[float32],
-				cols:        make([][]float32, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[float32], size)
 			merger = newMerger(mergeHost, sort.GenericLess[float32], sortKeyPos, df)
 		case types.T_float64:
-			df := &fixedDataFetcher[float64]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[float64],
-				cols:        make([][]float64, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[float64], size)
 			merger = newMerger(mergeHost, sort.GenericLess[float64], sortKeyPos, df)
 		case types.T_uint8:
-			df := &fixedDataFetcher[uint8]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[uint8],
-				cols:        make([][]uint8, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[uint8], size)
 			merger = newMerger(mergeHost, sort.GenericLess[uint8], sortKeyPos, df)
 		case types.T_uint16:
-			df := &fixedDataFetcher[uint16]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[uint16],
-				cols:        make([][]uint16, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[uint16], size)
 			merger = newMerger(mergeHost, sort.GenericLess[uint16], sortKeyPos, df)
 		case types.T_uint32:
-			df := &fixedDataFetcher[uint32]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[uint32],
-				cols:        make([][]uint32, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[uint32], size)
 			merger = newMerger(mergeHost, sort.GenericLess[uint32], sortKeyPos, df)
 		case types.T_uint64:
-			df := &fixedDataFetcher[uint64]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[uint64],
-				cols:        make([][]uint64, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[uint64], size)
 			merger = newMerger(mergeHost, sort.GenericLess[uint64], sortKeyPos, df)
 		case types.T_date:
-			df := &fixedDataFetcher[types.Date]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[types.Date],
-				cols:        make([][]types.Date, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[types.Date], size)
 			merger = newMerger(mergeHost, sort.GenericLess[types.Date], sortKeyPos, df)
 		case types.T_timestamp:
-			df := &fixedDataFetcher[types.Timestamp]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[types.Timestamp],
-				cols:        make([][]types.Timestamp, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[types.Timestamp], size)
 			merger = newMerger(mergeHost, sort.GenericLess[types.Timestamp], sortKeyPos, df)
 		case types.T_datetime:
-			df := &fixedDataFetcher[types.Datetime]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[types.Datetime],
-				cols:        make([][]types.Datetime, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[types.Datetime], size)
 			merger = newMerger(mergeHost, sort.GenericLess[types.Datetime], sortKeyPos, df)
 		case types.T_time:
-			df := &fixedDataFetcher[types.Time]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[types.Time],
-				cols:        make([][]types.Time, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[types.Time], size)
 			merger = newMerger(mergeHost, sort.GenericLess[types.Time], sortKeyPos, df)
 		case types.T_enum:
-			df := &fixedDataFetcher[types.Enum]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[types.Enum],
-				cols:        make([][]types.Enum, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[types.Enum], size)
 			merger = newMerger(mergeHost, sort.GenericLess[types.Enum], sortKeyPos, df)
 		case types.T_decimal64:
-			df := &fixedDataFetcher[types.Decimal64]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[types.Decimal64],
-				cols:        make([][]types.Decimal64, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[types.Decimal64], size)
 			merger = newMerger(mergeHost, sort.Decimal64Less, sortKeyPos, df)
 		case types.T_decimal128:
-			df := &fixedDataFetcher[types.Decimal128]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[types.Decimal128],
-				cols:        make([][]types.Decimal128, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[types.Decimal128], size)
 			merger = newMerger(mergeHost, sort.Decimal128Less, sortKeyPos, df)
 		case types.T_uuid:
-			df := &fixedDataFetcher[types.Uuid]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[types.Uuid],
-				cols:        make([][]types.Uuid, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[types.Uuid], size)
 			merger = newMerger(mergeHost, sort.UuidLess, sortKeyPos, df)
 		case types.T_TS:
-			df := &fixedDataFetcher[types.TS]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[types.TS],
-				cols:        make([][]types.TS, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[types.TS], size)
 			merger = newMerger(mergeHost, sort.TsLess, sortKeyPos, df)
 		case types.T_Rowid:
-			df := &fixedDataFetcher[types.Rowid]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[types.Rowid],
-				cols:        make([][]types.Rowid, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[types.Rowid], size)
 			merger = newMerger(mergeHost, sort.RowidLess, sortKeyPos, df)
 		case types.T_Blockid:
-			df := &fixedDataFetcher[types.Blockid]{
-				mustColFunc: vector.MustFixedColNoTypeCheck[types.Blockid],
-				cols:        make([][]types.Blockid, size),
-			}
+			df := vector.NewFixedDataSlice(vector.MustFixedColNoTypeCheck[types.Blockid], size)
 			merger = newMerger(mergeHost, sort.BlockidLess, sortKeyPos, df)
 		default:
 			return moerr.NewErrUnsupportedDataType(ctx, typ)

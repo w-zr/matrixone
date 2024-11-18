@@ -294,22 +294,15 @@ func getFixedCols[T types.FixedSizeT](bats []*batch.Batch, idx int) (cols [][]T)
 	return
 }
 
-func getVarlenaCols(bats []*batch.Batch, idx int) (cols []struct {
-	data []types.Varlena
-	area []byte
-}) {
-	cols = make([]struct {
-		data []types.Varlena
-		area []byte
-	}, 0, len(bats))
+func getVarlenaCols(bats []*batch.Batch, idx int) ([][]types.Varlena, []byte) {
+	cols := make([][]types.Varlena, 0, len(bats))
+	var area []byte
 	for i := range bats {
-		data, area := vector.MustVarlenaRawData(bats[i].Vecs[idx])
-		cols = append(cols, struct {
-			data []types.Varlena
-			area []byte
-		}{data, area})
+		var data []types.Varlena
+		data, area = vector.MustVarlenaRawData(bats[i].Vecs[idx])
+		cols = append(cols, data)
 	}
-	return
+	return cols, area
 }
 
 func (w *S3Writer) FlushTailBatch(ctx context.Context, proc *process.Process) ([]objectio.BlockInfo, objectio.ObjectStats, error) {
