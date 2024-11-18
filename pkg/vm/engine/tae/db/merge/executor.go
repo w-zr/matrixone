@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,12 +39,14 @@ import (
 type debugStats struct {
 	sync.RWMutex
 
-	m map[string]int
+	sizes map[string]int
+	times map[string]int
 }
 
 func (s *debugStats) Add(e string, size int) {
 	s.Lock()
-	s.m[e] += size
+	s.sizes[e] += size
+	s.times[e]++
 	s.Unlock()
 }
 
@@ -51,12 +54,12 @@ func (s *debugStats) String() string {
 	s.RLock()
 	defer s.RUnlock()
 
-	slice := make([]string, 0, len(s.m))
-	for k := range s.m {
+	slice := make([]string, 0, len(s.sizes))
+	for k := range s.sizes {
 		slice = append(slice, k)
 	}
 	slices.SortFunc(slice, func(a, b string) int {
-		return cmp.Compare(s.m[a], s.m[b])
+		return cmp.Compare(s.sizes[a], s.sizes[b])
 	})
 
 	var builder strings.Builder
@@ -64,7 +67,9 @@ func (s *debugStats) String() string {
 	for _, k := range slice {
 		builder.WriteString(k)
 		builder.WriteString(": ")
-		builder.WriteString(common.HumanReadableBytes(s.m[k]))
+		builder.WriteString(strconv.Itoa(s.times[k]))
+		builder.WriteString(", ")
+		builder.WriteString(common.HumanReadableBytes(s.sizes[k]))
 		builder.WriteByte('\n')
 	}
 	return builder.String()
@@ -73,7 +78,8 @@ func (s *debugStats) String() string {
 var debug debugStats
 
 func init() {
-	debug.m = make(map[string]int)
+	debug.sizes = make(map[string]int)
+	debug.times = make(map[string]int)
 }
 
 // executor consider resources to decide to merge or not.
