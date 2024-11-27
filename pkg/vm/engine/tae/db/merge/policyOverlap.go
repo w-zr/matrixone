@@ -152,7 +152,7 @@ func (m *objOverlapPolicy) reviseLeveledObjs(level int) []reviseResult {
 		}
 		revisedResults = append(revisedResults, reviseResult{
 			objs: slices.Clone(objs),
-			kind: taskHostDN,
+			kind: taskHostCN,
 		})
 	}
 
