@@ -105,3 +105,19 @@ func (task *flushDeletesTask) Execute(ctx context.Context) error {
 	})
 	return err
 }
+
+func (task *flushDeletesTask) release() {
+	if task == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+	defer cancel()
+	task.WaitDone(ctx)
+
+	if task.delta != nil {
+		task.delta.Close()
+	}
+}

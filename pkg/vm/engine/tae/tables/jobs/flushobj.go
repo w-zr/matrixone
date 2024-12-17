@@ -42,7 +42,6 @@ type flushObjTask struct {
 	schemaVer uint32
 	seqnums   []uint16
 	stat      objectio.ObjectStats
-	isAObj    bool
 
 	createAt    time.Time
 	partentTask string
@@ -58,7 +57,6 @@ func NewFlushObjTask(
 	meta *catalog.ObjectEntry,
 	data *containers.Batch,
 	delta *containers.Batch,
-	isAObj bool,
 	parentTask string,
 ) *flushObjTask {
 	task := &flushObjTask{
@@ -68,7 +66,6 @@ func NewFlushObjTask(
 		meta:        meta,
 		fs:          fs,
 		delta:       delta,
-		isAObj:      isAObj,
 		createAt:    time.Now(),
 		partentTask: parentTask,
 	}
@@ -90,9 +87,7 @@ func (task *flushObjTask) Execute(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	if task.isAObj {
-		writer.SetAppendable()
-	}
+	writer.SetAppendable()
 	if task.meta.GetSchema().HasPK() {
 		writer.SetPrimaryKey(uint16(task.meta.GetSchema().GetSingleSortKeyIdx()))
 	} else if task.meta.GetSchema().HasSortKey() {
@@ -154,4 +149,23 @@ func (task *flushObjTask) Execute(ctx context.Context) (err error) {
 	})
 	task.stat = writer.Stats()
 	return err
+}
+
+func (task *flushObjTask) release() {
+	if task == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+	defer cancel()
+	task.WaitDone(ctx)
+
+	if task.data != nil {
+		task.data.Close()
+	}
+	if task.delta != nil {
+		task.delta.Close()
+	}
 }

@@ -297,7 +297,7 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	snapshotSubtasks, err := task.flushAObjsForSnapshot(ctx)
 	statFlushAobj := time.Since(inst)
 	defer func() {
-		releaseFlushObjTasks(task, snapshotSubtasks, err)
+		releaseFlushObjTasks(task.Name(), snapshotSubtasks, err)
 	}()
 	if err != nil {
 		return
@@ -312,12 +312,13 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	inst = time.Now()
 	deleteTask, emptyMap, err := task.flushAllDeletesFromDelSrc(ctx)
 	statFlushDel := time.Since(inst)
+	defer func() {
+		releaseFlushDelTask(task.Name(), deleteTask, err)
+	}()
 	if err != nil {
 		return
 	}
-	defer func() {
-		relaseFlushDelTask(task, deleteTask, err)
-	}()
+
 	/////////////////////
 	//// phase seperator
 	///////////////////
@@ -682,7 +683,6 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context) (subt
 			obj,
 			data,
 			deletes,
-			true,
 			task.Name(),
 		)
 		if err = task.rt.Scheduler.Schedule(aobjectTask); err != nil {
@@ -885,52 +885,27 @@ func makeDeletesTempBatch(template *containers.Batch, pool *containers.VectorPoo
 	return bat
 }
 
-func relaseFlushDelTask(ftask *flushTableTailTask, task *flushDeletesTask, err error) {
-	if err != nil && task != nil {
+func releaseFlushDelTask(taskName string, task *flushDeletesTask, err error) {
+	if err != nil {
 		logutil.Info(
 			"[FLUSH-DEL-ERR]",
-			zap.String("task", ftask.Name()),
+			zap.String("task", taskName),
 			common.AnyField("error", err),
 		)
-		ictx, cancel := context.WithTimeout(
-			context.Background(),
-			10*time.Second, /*6*time.Minute,*/
-		)
-		defer cancel()
-		task.WaitDone(ictx)
 	}
-	if task != nil && task.delta != nil {
-		task.delta.Close()
-	}
+	task.release()
 }
 
-func releaseFlushObjTasks(ftask *flushTableTailTask, subtasks []*flushObjTask, err error) {
+func releaseFlushObjTasks(taskName string, subtasks []*flushObjTask, err error) {
 	if err != nil {
 		logutil.Info(
 			"[FLUSH-AOBJ-ERR]",
-			common.AnyField("error", err),
-			zap.String("task", ftask.Name()),
+			zap.String("task", taskName),
+			zap.Error(err),
 		)
-		// add a timeout to avoid WaitDone block the whole process
-		ictx, cancel := context.WithTimeout(
-			context.Background(),
-			10*time.Second, /*6*time.Minute,*/
-		)
-		defer cancel()
-		for _, subtask := range subtasks {
-			if subtask != nil {
-				// wait done, otherwise the data might be released before flush, and cause data race
-				subtask.WaitDone(ictx)
-			}
-		}
 	}
-	for _, subtask := range subtasks {
-		if subtask != nil && subtask.data != nil {
-			subtask.data.Close()
-		}
-		if subtask != nil && subtask.delta != nil {
-			subtask.delta.Close()
-		}
+	for _, subTask := range subtasks {
+		subTask.release()
 	}
 }
 
