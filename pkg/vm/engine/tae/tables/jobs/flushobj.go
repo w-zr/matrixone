@@ -47,6 +47,7 @@ type flushObjTask struct {
 	partentTask string
 
 	Stats objectio.ObjectStats
+	done  bool
 }
 
 func NewFlushObjTask(
@@ -155,12 +156,14 @@ func (task *flushObjTask) release() {
 	if task == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(
-		context.Background(),
-		10*time.Second,
-	)
-	defer cancel()
-	task.WaitDone(ctx)
+	if !task.done {
+		ctx, cancel := context.WithTimeout(
+			context.Background(),
+			10*time.Second,
+		)
+		defer cancel()
+		task.WaitDone(ctx)
+	}
 
 	if task.data != nil {
 		task.data.Close()

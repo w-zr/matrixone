@@ -704,6 +704,7 @@ func (task *flushTableTailTask) waitFlushAObjForSnapshot(ctx context.Context, su
 		if err = subtask.WaitDone(ictx); err != nil {
 			return
 		}
+		subtask.done = true
 		if err = task.aObjHandles[i].UpdateStats(subtask.stat); err != nil {
 			return
 		}
@@ -848,6 +849,7 @@ func (task *flushTableTailTask) waitFlushAllDeletesFromDelSrc(ctx context.Contex
 	if err = subtask.WaitDone(ictx); err != nil {
 		return err
 	}
+	subtask.done = true
 	task.createdDeletesObjectName = subtask.name.String()
 	deltaLoc := blockio.EncodeLocation(
 		subtask.name,
