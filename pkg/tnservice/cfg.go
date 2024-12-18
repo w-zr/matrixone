@@ -140,8 +140,6 @@ type Config struct {
 		CNStandaloneTake bool          `toml:"offload-when-standalone"`
 		CNTakeOverExceed toml.ByteSize `toml:"offload-exceed"`
 		CNMergeMemHint   toml.ByteSize `toml:"offload-mem-hint"`
-
-		DisableZMBasedMerge bool `toml:"disable-zm-based-merge"`
 	}
 
 	LogtailServer struct {

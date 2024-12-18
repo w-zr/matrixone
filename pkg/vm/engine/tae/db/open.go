@@ -66,9 +66,6 @@ func fillRuntimeOptions(opts *options.Options) {
 	if opts.MergeCfg.CNStandaloneTake {
 		common.ShouldStandaloneCNTakeOver.Store(true)
 	}
-	if opts.MergeCfg.DisableZMBasedMerge {
-		common.RuntimeDisableZMBasedMerge.Store(true)
-	}
 }
 
 func Open(
