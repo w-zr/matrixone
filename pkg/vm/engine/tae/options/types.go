@@ -74,7 +74,6 @@ type Options struct {
 	SchedulerCfg  *SchedulerCfg  `toml:"scheduler-cfg"`
 	GCCfg         *GCCfg         `toml:"gc-cfg"`
 	LogtailCfg    *LogtailCfg
-	MergeCfg      *MergeConfig
 	CatalogCfg    *CatalogCfg
 
 	BulkTomestoneTxnThreshold uint64

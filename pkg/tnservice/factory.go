@@ -181,13 +181,6 @@ func (s *store) newTAEStorage(
 		GCProbility:    s.cfg.GCCfg.GCProbility,
 	}
 
-	mergeCfg := &options.MergeConfig{
-		CNMergeMemControlHint: uint64(s.cfg.Merge.CNMergeMemHint),
-		CNTakeOverAll:         s.cfg.Merge.CNTakeOverAll,
-		CNTakeOverExceed:      uint64(s.cfg.Merge.CNTakeOverExceed),
-		CNStandaloneTake:      s.cfg.Merge.CNStandaloneTake,
-	}
-
 	logtailServerAddr := s.logtailServiceListenAddr()
 	logtailServerCfg := &options.LogtailServerCfg{
 		RpcMaxMessageSize:      int64(s.cfg.LogtailServer.RpcMaxMessageSize),
@@ -211,7 +204,6 @@ func (s *store) newTAEStorage(
 		Shard:             shard,
 		CheckpointCfg:     ckpcfg,
 		GCCfg:             gcCfg,
-		MergeCfg:          mergeCfg,
 		LogStoreT:         options.LogstoreLogservice,
 		IncrementalDedup:  s.cfg.Txn.IncrementalDedup == "true",
 		IsStandalone:      s.cfg.InStandalone,
